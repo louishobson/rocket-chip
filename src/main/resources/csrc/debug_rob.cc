@@ -6,12 +6,12 @@
 #define WDATA_BITS (512)
 #define WDATA_BYTES (WDATA_BITS / 8)
 
-typedef struct tagged_wb_data_t {
+struct tagged_wb_data_t {
   uint64_t tag;
   uint8_t data[WDATA_BYTES];
 };
 
-typedef struct tagged_traced_insn_t {
+struct tagged_traced_insn_t {
   uint64_t iaddr;
   uint64_t insn;
   uint8_t priv;
@@ -25,7 +25,7 @@ typedef struct tagged_traced_insn_t {
   uint64_t wb_tag;
 };
 
-typedef struct debug_rob_t {
+struct debug_rob_t {
   std::deque<tagged_traced_insn_t*> rob;
   std::deque<tagged_wb_data_t*> wb_datas;
 };
