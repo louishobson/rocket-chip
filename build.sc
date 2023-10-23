@@ -200,8 +200,8 @@ trait Emulator extends Cross.Module2[String, String] {
          |
          |set(CMAKE_BUILD_TYPE Release)
          |set(CMAKE_CXX_STANDARD 17)
-         |set(CMAKE_C_COMPILER "clang")
-         |set(CMAKE_CXX_COMPILER "clang++")
+         |set(CMAKE_C_COMPILER "gcc")
+         |set(CMAKE_CXX_COMPILER "g++")
          |set(CMAKE_CXX_FLAGS
          |"$${CMAKE_CXX_FLAGS} -DVERILATOR -DTEST_HARNESS=VTestHarness -include VTestHarness.h -include verilator.h -include ${generator.elaborate().path / config + ".plusArgs"}")
          |set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -230,13 +230,15 @@ trait Emulator extends Cross.Module2[String, String] {
       Seq(
         // format: off
         "-Wno-UNOPTTHREADS", "-Wno-STMTDLY", "-Wno-LATCH", "-Wno-WIDTH", "--no-timing",
-        "--x-assign unique",
+        "--x-assign fast --x-initial fast",
         """+define+PRINTF_COND=\$c\(\"verbose\",\"&&\",\"done_reset\"\)""",
         """+define+STOP_COND=\$c\(\"done_reset\"\)""",
         "+define+RANDOMIZE_GARBAGE_ASSIGN",
         "--output-split 20000",
         "--output-split-cfuncs 20000",
         "--max-num-width 1048576",
+        "--build-jobs", "9",
+        "--j", "6",
         s"-I${vsrcDir().path}",
         // format: on
       )
