@@ -203,13 +203,17 @@ trait Emulator extends Cross.Module2[String, String] {
          |set(CMAKE_C_COMPILER "gcc")
          |set(CMAKE_CXX_COMPILER "g++")
          |set(CMAKE_CXX_FLAGS
-         |"$${CMAKE_CXX_FLAGS} -DVERILATOR -DTEST_HARNESS=VTestHarness -include VTestHarness.h -include verilator.h -include ${generator.elaborate().path / config + ".plusArgs"}")
+         |"$${CMAKE_CXX_FLAGS} -DVERILATOR -DTEST_HARNESS=VTestHarness -include VTestHarness.h -include verilator.h -include ${generator.elaborate().path / config}.plusArgs")
          |set(THREADS_PREFER_PTHREAD_FLAG ON)
          |
          |find_package(verilator)
          |find_package(Threads)
          |
          |add_executable(emulator
+         |${allCSourceFiles().map(_.path).mkString("\n")}
+         |)
+         |
+         |add_executable(emulator.trace
          |${allCSourceFiles().map(_.path).mkString("\n")}
          |)
          |
@@ -221,6 +225,16 @@ trait Emulator extends Cross.Module2[String, String] {
          |  TOP_MODULE TestHarness
          |  PREFIX VTestHarness
          |  VERILATOR_ARGS ${verilatorArgs().mkString(" ")}
+         |)
+         |
+         |target_link_libraries(emulator.trace PRIVATE $${CMAKE_THREAD_LIBS_INIT})
+         |target_link_libraries(emulator.trace PRIVATE fesvr)
+         |verilate(emulator.trace
+         |  SOURCES
+         |  ${mfccompiler.rtls().map(_.path.toString).mkString("\n")}
+         |  TOP_MODULE TestHarness
+         |  PREFIX VTestHarness
+         |  VERILATOR_ARGS ${verilatorArgs().mkString(" ")} --trace
          |)
          |""".stripMargin
       // format: on
@@ -251,7 +265,7 @@ trait Emulator extends Cross.Module2[String, String] {
     }
 
     def elf = T.persistent {
-      mill.util.Jvm.runSubprocess(Seq("cmake", "-G", "Ninja", "-S", cmakefileLists().path, "-B", T.dest.toString).map(_.toString), Map[String, String](), T.dest)
+      mill.util.Jvm.runSubprocess(Seq("cmake", "-G", "Ninja", "-S", cmakefileLists().path, "-B", T.dest.toString, "-Wno-dev").map(_.toString), Map[String, String](), T.dest)
       mill.util.Jvm.runSubprocess(Seq("ninja", "-C", T.dest).map(_.toString), Map[String, String](), T.dest)
       PathRef(T.dest / "emulator")
     }
