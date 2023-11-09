@@ -480,6 +480,9 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     */
   val s1s3_slaveData = Reg(UInt(wordBits.W))
 
+  // %%
+  // Here we check the tag.
+  // tag_rdata is the vector of tags for this set.
   for (i <- 0 until nWays) {
     val s1_idx = index(s1_vaddr, io.s1_paddr)
     val s1_tag = io.s1_paddr >> pgUntagBits
@@ -541,6 +544,14 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     *    It takes 8 beats to refill 16 instruction in each refilling cycle.
     *    Data_array receives data[63:0](2 instructions) at once,they will be allocated in deferent bank according to vaddr[2]
     */
+  // %%
+  // tl_out is the TileLink memory interface
+  // tl_out.d is the D interface
+  // tl_out.d.bits.data is the data attribute of the decoupled interface
+  // tl_out.d.bits.data.getWidth is the width in bits of the data from memory
+  // wordBits = outer.icacheParams.fetchBytes*8
+  // So, we get tl_out.d.bits.data.getWidth bits of data from memory, and we split
+  // it into tl_out.d.bits.data.getWidth/wordBits arrays of SRAM.
   val data_arrays = Seq.tabulate(tl_out.d.bits.data.getWidth / wordBits) {
     i =>
       DescribedSRAM(
