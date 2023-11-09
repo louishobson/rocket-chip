@@ -180,6 +180,39 @@ class WithNSmallCores(
   }
 })
 
+
+class With1SimpleCore extends Config((site, here, up) => {
+  case XLen => 32
+  case TilesLocated(InSubsystem) => {
+    val tiny = RocketTileParams(
+      core = RocketCoreParams(useVM = false, fpu = None),
+      btb = None,
+      dcache = Some(DCacheParams(
+        rowBits = site(SystemBusKey).beatBits,
+        nSets = 64, // 16Kb scratchpad
+        nWays = 1,
+        nTLBSets = 1,
+        nTLBWays = 4,
+        nMSHRs = 0,
+        blockBytes = site(CacheBlockBytes))),
+      icache = Some(ICacheParams(
+        rowBits = site(SystemBusKey).beatBits,
+        nSets = 64,
+        nWays = 1,
+        nTLBSets = 1,
+        nTLBWays = 4,
+        latency = 1,
+        blockBytes = site(CacheBlockBytes))))
+    List(RocketTileAttachParams(
+      tiny,
+      RocketCrossingParams(
+        crossingType = SynchronousCrossing(),
+        master = TileMasterPortParams())
+    ))
+  }
+})
+
+
 class With1TinyCore extends Config((site, here, up) => {
   case XLen => 32
   case TilesLocated(InSubsystem) => {
