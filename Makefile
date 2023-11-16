@@ -6,9 +6,10 @@ PROJECT ?= freechips.rocketchip.system
 CONFIG ?= DefaultConfig
 CONFIG_FULL ?= $(PROJECT).$(CONFIG)
 MILL ?= mill
-RUN ?= scratch/test
+RUN ?= scratch/hello_world
 
 RISCV_CC := $(RISCV)/bin/riscv64-unknown-elf-gcc
+RISCV_CARGS := -O0
 
 
 verilog:
@@ -28,7 +29,7 @@ vsim.trace:
 	mill emulator[freechips.rocketchip.system.TestHarness,$(CONFIG_FULL)].elf_trace
 
 %.riscv.o: %.c
-	$(RISCV_CC) -c $< -o $@
+	$(RISCV_CC) $(RISCV_CARGS) -c $< -o $@
 
 %.riscv: %.riscv.o
 	$(RISCV_CC) $< -o $@
