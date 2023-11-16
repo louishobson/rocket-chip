@@ -382,6 +382,34 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   /** AccessAckData, is refilling I$, it will block request from CPU. */
   val refill_one_beat = tl_out.d.fire && edge_out.hasData(tl_out.d.bits)
 
+
+
+  /* The block address */
+  val s1_baddr = io.s1_paddr >> blockOffBits
+
+  /* Initialise the BB head and size registers */
+  val bb_head = RegInit(UInt(paddrBits.W), 0.U)
+  val bb_size = RegInit(UInt(8.W), 0.U)
+
+  /**
+   * Calculate the change in baddr compared to the current head.
+   * s1_bb_cont indicates that we are within the same BB.
+   * s1_bb_ext indicates that we have just extended the BB by one cache line.
+   */
+  val s1_bdiff = s1_baddr - bb_head
+  val s1_bb_cont = s1_bdiff <= bb_size
+  val s1_bb_ext  = s1_bdiff === bb_size
+
+  /* Update the registers */
+  when(s1_valid && !io.s1_kill)
+  {
+    printf("## s1_paddr %x; s1_baddr %x; bb_cont %d; bb_head %x; bb_size %d\n", io.s1_paddr, s1_baddr, s1_bb_cont, bb_head, bb_size)
+    bb_head := Mux(s1_bb_cont, bb_head, s1_baddr)
+    bb_size := Mux(s1_bb_cont, Mux(s1_bb_ext, bb_size + 1.U, bb_size), 1.U)
+  }
+
+
+
   /** block request from CPU when refill or scratch pad access. */
   io.req.ready := !(refill_one_beat || s0_slaveValid || s3_slaveValid)
   s1_valid := s0_valid
@@ -546,7 +574,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     */
   // %%
   // tl_out is the TileLink memory interface
-  // tl_out.d is the D interface
+  // tl_out.d is the D interface - specifically the Grant interface, where data will be received
   // tl_out.d.bits.data is the data attribute of the decoupled interface
   // tl_out.d.bits.data.getWidth is the width in bits of the data from memory
   // wordBits = outer.icacheParams.fetchBytes*8
