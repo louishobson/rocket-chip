@@ -62,6 +62,7 @@ trait HasL1ICacheParameters extends HasL1CacheParameters with HasCoreParameters 
 
 class ICacheReq(implicit p: Parameters) extends CoreBundle()(p) with HasL1ICacheParameters {
   val addr = UInt(vaddrBits.W)
+  val time = UInt(64.W)
 }
 
 class ICacheErrors(implicit p: Parameters) extends CoreBundle()(p)
@@ -333,6 +334,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   val s1_valid = RegInit(false.B)
   /** virtual address from CPU in stage 1. */
   val s1_vaddr = RegEnable(s0_vaddr, s0_valid)
+  /** time from CPU in stage 1 */
+  val s1_time = RegEnable(io.req.bits.time, s0_valid)
   /** tag hit vector to indicate hit which way. */
   val s1_tag_hit = Wire(Vec(nWays, Bool()))
   /** CPU I$ Hit in stage 1.
@@ -381,34 +384,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   val refill_idx = index(refill_vaddr, refill_paddr)
   /** AccessAckData, is refilling I$, it will block request from CPU. */
   val refill_one_beat = tl_out.d.fire && edge_out.hasData(tl_out.d.bits)
-
-
-
-  /* The block address */
-  val s1_baddr = io.s1_paddr >> blockOffBits
-
-  /* Initialise the BB head and size registers */
-  val bb_head = RegInit(UInt(paddrBits.W), 0.U)
-  val bb_size = RegInit(UInt(8.W), 0.U)
-
-  /**
-   * Calculate the change in baddr compared to the current head.
-   * s1_bb_cont indicates that we are within the same BB.
-   * s1_bb_ext indicates that we have just extended the BB by one cache line.
-   */
-  val s1_bdiff = s1_baddr - bb_head
-  val s1_bb_cont = s1_bdiff <= bb_size
-  val s1_bb_ext  = s1_bdiff === bb_size
-
-  /* Update the registers */
-  when(s1_valid && !io.s1_kill)
-  {
-    printf("## s1_paddr %x; s1_baddr %x; bb_cont %d; bb_head %x; bb_size %d\n", io.s1_paddr, s1_baddr, s1_bb_cont, bb_head, bb_size)
-    bb_head := Mux(s1_bb_cont, bb_head, s1_baddr)
-    bb_size := Mux(s1_bb_cont, Mux(s1_bb_ext, bb_size + 1.U, bb_size), 1.U)
-  }
-
-
 
   /** block request from CPU when refill or scratch pad access. */
   io.req.ready := !(refill_one_beat || s0_slaveValid || s3_slaveValid)
@@ -866,6 +841,16 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   io.keep_clock_enabled :=
     tl_in.map(tl => tl.a.valid || tl.d.valid || s1_slaveValid || s2_slaveValid || s3_slaveValid).getOrElse(false.B) || // ITIM
     s1_valid || s2_valid || refill_valid || send_hint || hint_outstanding // I$
+
+  /** the entangling prefetcher module */
+  val prefetcher = Module(new EntanglingIPrefetcher(new EntanglingIPrefetcherConfig))
+  prefetcher.io.fetch_req.bits.paddr := io.s1_paddr
+  prefetcher.io.fetch_req.bits.time := s1_time
+  prefetcher.io.fetch_req.valid := s1_valid && !io.s1_kill 
+  prefetcher.io.miss_req.bits.paddr := io.s1_paddr
+  prefetcher.io.miss_req.bits.start := s1_time
+  prefetcher.io.miss_req.bits.end := s1_time
+  prefetcher.io.miss_req.valid := true.B
 
   /** index to access [[data_arrays]] and [[tag_array]].
     * @note

@@ -929,6 +929,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   // Connect RAS in Frontend
   io.imem.ras_update := DontCare
 
+  io.imem.time := csr.io.time
+
   io.fpu.valid := !ctrl_killd && id_ctrl.fp
   io.fpu.killx := ctrl_killx
   io.fpu.killm := killm_common
