@@ -173,7 +173,22 @@ class WithPowerQueueTests extends Config((site, here, up) => {
 class WithEntanglerTests extends Config((site, here, up) => {
   case UnitTests => (q: Parameters) => {
     implicit val p = q
-    Seq(Module(new EntanglerTest))
+    Seq(
+      /* TEST 1: We can encode any two arbitrary addresses without compression */
+      Module(new EntanglerTest(0, 28, 0x8000000, Seq(0, 0xFFFFFFF), 0)),
+
+      /* TEST 2: We can encode six highly-compressed addresses */
+      Module(new EntanglerTest(1, 28, 0x8000000, Seq.tabulate(6)(0x8000000+_), 0)),
+
+      /* TEST 3: We should drop one address from a sequence of 7 when they are compressible */
+      Module(new EntanglerTest(2, 28, 0x8000000, Seq.tabulate(7)(0x8000000+_), 1)),
+
+      /* TEST 4: We should drop down to two address if they are not compressible at all */
+      Module(new EntanglerTest(3, 28, 0x8000000, (0 until 7), 5)),
+
+      /* TEST 5: We can encode the empty sequence of baddrs */
+      Module(new EntanglerTest(4, 28, 0x8000000, Seq(), 0)),
+    )
   }
 })
 

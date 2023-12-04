@@ -11,21 +11,33 @@ import freechips.rocketchip.unittest._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util.ShiftRegInit
 import chisel3.util.ShiftRegister
+import freechips.rocketchip.util.TestPrefixSums
 
 
 
 /** [[Entangler]] defines helper methods to manipulate entanglings.
+ * 
+ * @param baddrBits The bits required to store a basic block address.
+ * @param keepLastBaddr Whether to always keep the last baddr in random replacement.
+ * This is useful if you know that a newly-added baddr is always the last in the sequence,
+ * and we always want the random replacement to insert the new baddr.
  */
-class Entangler(baddrBits: Int) {
+class Entangler(baddrBits: Int, keepLastBaddr: Boolean = true) {
 
   /** Encode addresses to an entangling sequence.
     * This process will take at least one cycle, hence the validity bit input.
-    * If the validity bit is set, then the inputs will override any currently encoding process.
-    */ 
-  def encode(len: UInt, baddrs: Vec[UInt], head: UInt, valid: Bool): (Bool, Bits) = {
+    * If the validity bit is set, then the inputs will override any current encoding process.
+    */
+  def encode(len: UInt, baddrs: Vec[UInt], head: UInt, valid: Bool): (Bool, UInt, Bits) = {
+    /* Assert that baddrs is size 7 at most */
+    assert(baddrs.length <= 7, "Entangler.encode: baddrs must be a vector of at most 7 addresses")
+
+    /* Assert that len is no greater than the size of baddrs */
+    assert(len <= baddrs.length.U, "Entangler.encode: len > baddrs.length")
+
     /* Create registers for each of the inputs */
     val len_reg = Reg(UInt(3.W))
-    val baddrs_reg = Reg(VecInit(Seq.fill(baddrs.length)(UInt(baddrBits.W))))
+    val baddrs_reg = Reg(Vec(7, UInt(baddrBits.W)))
     val head_reg = Reg(UInt(baddrBits.W))
     val valid_reg = RegInit(false.B)
 
@@ -35,18 +47,21 @@ class Entangler(baddrBits: Int) {
     /* Create a register to store the output encoding */
     val result = Reg(UInt(63.W))
 
-    /* When we receive a new input, overwrite any previous computation. */
+    /* When we receive a new input, overwrite any previous computation */
     when(valid) {
       len_reg := len
-      baddrs_reg := baddrs
+      baddrs_reg := baddrs.appendedAll(Seq.fill(7-baddrs.length)(0.U))
       head_reg := head
       valid_reg := true.B
       result_done := false.B
+      result := 0.U
     } 
     
     /* We don't have new input, so continue with the ongoing encoding, if one exists. */
     .elsewhen(valid_reg) {
-      /* The number of bits each baddr will be compressed to */
+      /* The number of bits each baddr will be compressed to.
+       * Division by 0 is fine here, as entryBits won't actually be used in that case.
+       */
       val entryBits = 60.U / len_reg
 
       /* Consider whether we can perform the compression. We must have
@@ -54,25 +69,38 @@ class Entangler(baddrBits: Int) {
        *  - each address must share the same MSBs as the head.
        */
       val baddrs_okay = len_reg <= 6.U && baddrs_reg.zipWithIndex.map{
-        case (baddr, i) => (baddr >> entryBits) === (head_reg >> entryBits) || i.U > len_reg
-      }.reduce(_||_)
+        case (baddr, i) => (baddr >> entryBits) === (head_reg >> entryBits) || i.U >= len_reg
+      }.reduce(_&&_)
 
-      /* We can produce an output entangling sequence when baddrs_okay is flagged. */
+      /* We can produce an output entangling sequence when baddrs_okay is flagged.
+       * Result is initialized to 0, which is the correct output for the case where reg_len is 0.
+       */
       when(baddrs_okay) {
         valid_reg := false.B
         result_done := true.B
-        result(62,60) := len_reg
         for(i <- 1 to 6) {
           when(i.U === len_reg) {
-            result(59,0) := baddrs_reg.take(i).map(_(60/i-1,0)).reduce(_##_)
+            result := len_reg ## baddrs_reg.take(i).map(WireInit(UInt((60/i).W), _)).reduce(_##_)
           }
         }
       } 
       
       /* Otherwise (baddrs_okay is false) we need to randomly pop one of the addresses */
       .otherwise {
-        /* Move the final baddr to a random position, replacing the baddr previously in that position. */
-        baddrs_reg(LFSR(16) % len_reg) := baddrs_reg(len_reg-1.U)
+        /* Generate a random number for which index is to be dropped.
+         * This should never happen while len_reg is <= 1.
+         */
+        assert(len_reg > 1.U)
+        val rnd = LFSR(16) % (if (keepLastBaddr) len_reg - 1.U else len_reg)
+
+        /* Shift all registers down, but only if the index is greater than the random number */
+        for(i <- 0 to 5) {
+          when(i.U >= rnd) {
+            baddrs_reg(i) := baddrs_reg(i+1)
+          }
+        }
+        
+        /* Decrement the length register */
         len_reg := len_reg - 1.U
       }
 
@@ -82,7 +110,7 @@ class Entangler(baddrBits: Int) {
     }
 
     /* Return the result validity bit and the result itself */
-    (result_done, result)
+    (result_done, head_reg, result)
   }
 
 
@@ -100,7 +128,7 @@ class Entangler(baddrBits: Int) {
     val mode = ent_seq(62,60)
 
     /* Define the outputs as wires */
-    val out = Wire(VecInit(Seq.fill(6)(UInt(baddrBits.W))))
+    val out = WireInit(Vec(6, UInt(baddrBits.W)), DontCare)
 
     /* Iterate over each of the modes, and hardware branch over each iteration equalling the mode.
      * Note that this also works when the mode is 0, since the mode is part of the return pair,
@@ -368,10 +396,62 @@ class EntanglingIPrefetcher(cfg: EntanglingIPrefetcherConfig)(implicit p: Parame
 
 
 /** [[EntanglerTest]] instruments tests for block address compression. */
-class EntanglerTest extends UnitTest {
+class EntanglerTest(id: Int, baddrBits: Int, head: Int, baddrs: Seq[Int], exp_drops: Int) extends UnitTest {
+
+  /* We can't instantiate an empty baddrs, so create a new sequence that is definitely non-empty */
+  val baddrs_non_empty = if (baddrs.length == 0) Seq(0) else baddrs
+
   /* The tests must be within a UnitTestModule */
   class Impl extends UnitTestModule {
-    io.finished := ShiftRegInit(true.B, 40, false.B)
+    /* Instantiate an entangler object */
+    val entangler = new Entangler(baddrBits);
+
+    /* Create registers for the inputs */
+    val test_len_in = RegInit(baddrs.length.U)
+    val test_baddrs_in = RegInit(VecInit(baddrs_non_empty.map(_.U(baddrBits.W))))
+    val test_head = RegInit(head.U(baddrBits.W))
+    val test_valid_in = RegNext(io.start, false.B)
+
+    /* Perform the encoding */
+    val (test_enc_valid, _, test_enc) = entangler.encode(test_len_in, test_baddrs_in, test_head, test_valid_in)
+
+    /* Perform the decoding */
+    val (test_len_out, test_baddrs_out) = entangler.decode(test_enc, test_head)
+
+    /* A register for when we have finished the test */
+    val test_finished = RegInit(false.B)
+
+    /* Perform assertions */
+    when(test_enc_valid) {
+      /* Check that we have the right amount of drops */
+      assert(test_len_out === test_len_in - exp_drops.U, 
+        s"[EntanglerTest $id]: test_len_in: %d, test_len_out: %d, exp_drops: $exp_drops\n", 
+        test_len_in, test_len_out
+      )
+
+      /* Check that each of the output baddrs are present in the input sequence */
+      for(i <- 0 until 6) {
+        when(i.U < test_len_out) {
+          assert(test_baddrs_in.contains(test_baddrs_out(i)),
+            s"[EntanglerTest $id] baddr %x present in the output, but not the input!", 
+            test_baddrs_out(i)
+          )
+        }
+      }
+
+      /* Check that the last input address is present in the output addresses */
+      when(test_len_in > 0.U) {
+        assert(test_baddrs_out.contains(test_baddrs_in(test_len_in-1.U)),
+          s"[EntanglerTest $id] random replacement dropped the last baddr!", 
+        )
+      }
+
+      /* The test has now succeeded */
+      test_finished := true.B
+    }
+
+    /* Output the success register */
+    io.finished := test_finished
   }
 
   /* Instantiate the test module */
