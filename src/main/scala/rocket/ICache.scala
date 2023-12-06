@@ -36,21 +36,23 @@ import chisel3.util.random.LFSR
   * @param fetchBytes byte size fetched by CPU for each cycle.
   */
 case class ICacheParams(
-    nSets: Int = 64,
-    nWays: Int = 4,
-    rowBits: Int = 128,
-    nTLBSets: Int = 1,
-    nTLBWays: Int = 32,
-    nTLBBasePageSectors: Int = 4,
-    nTLBSuperpages: Int = 4,
-    cacheIdBits: Int = 0,
-    tagECC: Option[String] = None,
-    dataECC: Option[String] = None,
-    itimAddr: Option[BigInt] = None,
-    prefetch: Boolean = false,
-    blockBytes: Int = 64,
-    latency: Int = 2,
-    fetchBytes: Int = 4) extends L1CacheParams {
+  nSets: Int = 64,
+  nWays: Int = 4,
+  rowBits: Int = 128,
+  nTLBSets: Int = 1,
+  nTLBWays: Int = 32,
+  nTLBBasePageSectors: Int = 4,
+  nTLBSuperpages: Int = 4,
+  cacheIdBits: Int = 0,
+  tagECC: Option[String] = None,
+  dataECC: Option[String] = None,
+  itimAddr: Option[BigInt] = None,
+  prefetch: Boolean = false,
+  blockBytes: Int = 64,
+  latency: Int = 2,
+  fetchBytes: Int = 4,
+  entanglingParams: Option[EntanglingIPrefetcherParams] = None
+) extends L1CacheParams {
   def tagCode: Code = Code.fromString(tagECC)
   def dataCode: Code = Code.fromString(dataECC)
   def replacement = new RandomReplacement(nWays)
@@ -843,14 +845,16 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     s1_valid || s2_valid || refill_valid || send_hint || hint_outstanding // I$
 
   /** the entangling prefetcher module */
-  val prefetcher = Module(new EntanglingIPrefetcher(new EntanglingIPrefetcherConfig))
-  prefetcher.io.fetch_req.bits.paddr := io.s1_paddr
-  prefetcher.io.fetch_req.bits.time := s1_time
-  prefetcher.io.fetch_req.valid := s1_valid && !io.s1_kill 
-  prefetcher.io.miss_req.bits.paddr := io.s1_paddr
-  prefetcher.io.miss_req.bits.start := s1_time
-  prefetcher.io.miss_req.bits.end := s1_time
-  prefetcher.io.miss_req.valid := true.B
+  if(cacheParams.entanglingParams.isDefined) {
+    val prefetcher = Module(new EntanglingIPrefetcher)
+    prefetcher.io.fetch_req.bits.paddr := io.s1_paddr
+    prefetcher.io.fetch_req.bits.time := s1_time
+    prefetcher.io.fetch_req.valid := s1_valid && !io.s1_kill 
+    prefetcher.io.miss_req.bits.paddr := io.s1_paddr
+    prefetcher.io.miss_req.bits.start := s1_time
+    prefetcher.io.miss_req.bits.end := s1_time
+    prefetcher.io.miss_req.valid := true.B
+  }
 
   /** index to access [[data_arrays]] and [[tag_array]].
     * @note

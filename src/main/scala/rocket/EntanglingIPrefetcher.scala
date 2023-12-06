@@ -10,7 +10,6 @@ import freechips.rocketchip.util.{DescribedSRAM}
 import freechips.rocketchip.unittest._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config.Field
-import freechips.rocketchip.util.Annotated
 
 
 
@@ -34,9 +33,12 @@ case class EntanglingIPrefetcherParams(
   nSets: Int = 1024,
 )
 
+/** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams
+  */ 
 trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   /* The parameters structure */
-  val entanglingParams: EntanglingIPrefetcherParams
+  implicit val p: Parameters
+  val entanglingParams: EntanglingIPrefetcherParams = cacheParams.entanglingParams.get
 
   /* Copy out the parameters */
   def timeBits = entanglingParams.timeBits
@@ -51,8 +53,8 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def baddrBits = paddrBits - blockOffBits
 
   /* Configuration for the entangling table */
-  require(isPow2(entanglingNSets), "entanglingNSets must be a power of 2")
-  def entIdxBits = log2Up(entanglingNSets)
+  require(isPow2(nWays), "entanglingNSets must be a power of 2")
+  def entIdxBits = log2Up(nSets)
   def entTagBits = baddrBits - entIdxBits
 
   /* The number of bits required to store a BB size */
@@ -63,16 +65,16 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
 
 /** [[EntanglerEncodeReq]] A request to encode, or response to decode for entangling operations.
   */ 
-class EntanglerEncodeReq(nBaddrs: Int, cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val head = UInt(cfg.baddrBits.W)
-  val baddrs = Vec(nBaddrs, UInt(cfg.baddrBits.W))
+class EntanglerEncodeReq(nBaddrs: Int)(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val head = UInt(baddrBits.W)
+  val baddrs = Vec(nBaddrs, UInt(baddrBits.W))
   val len = UInt(3.W)
 }
 
 /** [[EntanglerEncodeResp]] A response to encode, or a request to decode for entangling operations.
   */ 
-class EntanglerEncodeResp(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val head = UInt(cfg.baddrBits.W)
+class EntanglerEncodeResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val head = UInt(baddrBits.W)
   val ent = Bits(63.W)
 }
 
@@ -83,18 +85,18 @@ class EntanglerEncodeResp(cfg: EntanglingIPrefetcherConfig) extends Bundle {
   * @param keepLastBaddr Whether the last baddr in the input sequence should be dropped by random replacement.
   * This is useful when a newly-added baddr is always the last in the input sequence. 
   */
-class EntanglingEncoder(keepLastBaddr: Boolean, cfg: EntanglingIPrefetcherConfig) extends Module {
+class EntanglingEncoder(keepLastBaddr: Boolean = true)(implicit p: Parameters) extends CoreModule with HasEntanglingIPrefetcherParameters {
 
   /* Define the IO. The encoding process can take multiple cycles, so use decoupled IO. */
   val io = IO(new Bundle {
-    val req = Flipped(Decoupled(new EntanglerEncodeReq(7, cfg)))
-    val resp = Decoupled(new EntanglerEncodeResp(cfg))
+    val req = Flipped(Decoupled(new EntanglerEncodeReq(7)))
+    val resp = Decoupled(new EntanglerEncodeResp)
   })
 
   /* Create registers for each of the inputs */
   val len_reg = Reg(UInt(3.W))
-  val baddrs_reg = Reg(Vec(7, UInt(cfg.baddrBits.W)))
-  val head_reg = Reg(UInt(cfg.baddrBits.W))
+  val baddrs_reg = Reg(Vec(7, UInt(baddrBits.W)))
+  val head_reg = Reg(UInt(baddrBits.W))
 
   /* Whether the encoder is currently busy */
   val busy = RegInit(false.B)
@@ -184,12 +186,12 @@ class EntanglingEncoder(keepLastBaddr: Boolean, cfg: EntanglingIPrefetcherConfig
 /** [[EntanglingDecoder]] Decompresses compressed baddrs into separate registers and a length indicator.
   * The process is purely combinatorial logic (bit splicing), so the IO is not even Valid.
   */
-class EntanglingDecoder(cfg: EntanglingIPrefetcherConfig) extends Module {
+class EntanglingDecoder(implicit p: Parameters) extends CoreModule with HasEntanglingIPrefetcherParameters {
 
   /* Define the IO. We don't need decoupled IO as decoding only takes one cycle. */
   val io = IO(new Bundle {
-    val req = Input(new EntanglerEncodeResp(cfg))
-    val resp = Output(new EntanglerEncodeReq(6, cfg))
+    val req = Input(new EntanglerEncodeResp)
+    val resp = Output(new EntanglerEncodeReq(6))
   })
 
   /* Get the mode of the entangling */
@@ -212,11 +214,11 @@ class EntanglingDecoder(cfg: EntanglingIPrefetcherConfig) extends Module {
       /* Iterate over the number of addresses we need to extract */
       for (j <- 0 until i) {
         /* Detect whether the entire address fits in this entry, which makes setting the output easier */
-        if (entryBits >= cfg.baddrBits) {
-          io.resp.baddrs(j) := io.req.ent(cfg.baddrBits+j*entryBits-1,j*entryBits)
+        if (entryBits >= baddrBits) {
+          io.resp.baddrs(j) := io.req.ent(baddrBits+j*entryBits-1,j*entryBits)
         /* Else we need to reconstruct the address based on the head */
         } else {
-          io.resp.baddrs(j) := io.req.head(cfg.baddrBits-1,entryBits) ## io.req.ent((j+1)*entryBits-1,j*entryBits)
+          io.resp.baddrs(j) := io.req.head(baddrBits-1,entryBits) ## io.req.ent((j+1)*entryBits-1,j*entryBits)
         }
       }
     }
@@ -227,42 +229,42 @@ class EntanglingDecoder(cfg: EntanglingIPrefetcherConfig) extends Module {
 
 /** [[BBCounterReq]] defines the interface for notifying the BB counter of a new baddr being fetched.
   */ 
-class BBCounterReq(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val baddr = UInt(cfg.baddrBits.W)
-  val time = UInt(cfg.timeBits.W)
+class BBCounterReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val baddr = UInt(baddrBits.W)
+  val time = UInt(timeBits.W)
 }
 
 /** [[BBCounterSearchReq]] defines the interface for when a BB is completed.
   */
-class BBCounterResp(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val head = UInt(cfg.baddrBits.W)
-  val size = UInt(cfg.lgMaxBBSize.W)
-  val time = UInt(cfg.timeBits.W)
+class BBCounterResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val head = UInt(baddrBits.W)
+  val size = UInt(lgMaxBBSize.W)
+  val time = UInt(timeBits.W)
   val done = Bool()
 }
 
 /** [[BBCounter]] implements a counter for baddrs, emitting a when appropriate.
   */
-class BBCounter(cfg: EntanglingIPrefetcherConfig) extends Module {
+class BBCounter(implicit p: Parameters) extends CoreModule with HasEntanglingIPrefetcherParameters {
   
   /* Define the IO */
   val io = IO(new Bundle {
-    val req = Flipped(Valid(new BBCounterReq(cfg)))
-    val resp = Output(new BBCounterResp(cfg))
+    val req = Flipped(Valid(new BBCounterReq))
+    val resp = Output(new BBCounterResp)
   })
 
   /* Initialize the BB head, size and timestamp registers */
-  val bb_head = RegInit(0.U(cfg.baddrBits.W))
-  val bb_size = RegInit(0.U(cfg.lgMaxBBSize.W))
-  val bb_time = RegInit(0.U(cfg.timeBits.W))
+  val bb_head = RegInit(0.U(baddrBits.W))
+  val bb_size = RegInit(0.U(lgMaxBBSize.W))
+  val bb_time = RegInit(0.U(timeBits.W))
 
   /* Calculate the change in io.req.bits.baddr compared to the current head.
    * bb_cont indicates that we are within the same BB (true if baddr is not valid).
    * bb_next indicates that we have just extended the BB by one cache line (false if baddr is not valid).
    */
   val req_bdiff = io.req.bits.baddr - bb_head
-  val bb_cont = !io.req.valid || (req_bdiff <= bb_size && bb_size =/= cfg.maxBBSize.U)
-  val bb_next = io.req.valid && req_bdiff === bb_size && bb_size =/= cfg.maxBBSize.U
+  val bb_cont = !io.req.valid || (req_bdiff <= bb_size && bb_size =/= maxBBSize.U)
+  val bb_next = io.req.valid && req_bdiff === bb_size && bb_size =/= maxBBSize.U
 
   /* Update the registers */
   when(!bb_cont) { 
@@ -273,7 +275,7 @@ class BBCounter(cfg: EntanglingIPrefetcherConfig) extends Module {
     bb_size := bb_size + 1.U 
   }
 
-  require(cfg.sigBBSize >= 1, "sigBBSize must be >= 1")
+  require(sigBBSize >= 1, "sigBBSize must be >= 1")
   val newSigBB = 
 
   /* Print on new inputs */
@@ -284,7 +286,7 @@ class BBCounter(cfg: EntanglingIPrefetcherConfig) extends Module {
   /* Potentially output a completed significant BB. This is when a basic block reaches a size of sigBBSize.
    * This can stop tiny basic blocks from filling the entangling table.
    */
-  io.resp.done := !bb_cont && bb_size >= cfg.sigBBSize.U
+  io.resp.done := !bb_cont && bb_size >= sigBBSize.U
   io.resp.head := bb_head
   io.resp.size := bb_size
   io.resp.time := bb_time
@@ -295,34 +297,34 @@ class BBCounter(cfg: EntanglingIPrefetcherConfig) extends Module {
 
 /** [[HBInsertReq]] defines the interface for requesting an insert operation on the HB.
   */ 
-class HBInsertReq(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val head = UInt(cfg.baddrBits.W)
-  val time = UInt(cfg.timeBits.W)
+class HBInsertReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val head = UInt(baddrBits.W)
+  val time = UInt(timeBits.W)
 }
 
 /** [[HBSearchReq]] defines the interface for requesting a search of the HB.
   */
-class HBSearchReq(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val miss_baddr = UInt(cfg.baddrBits.W)
-  val targ_time = UInt(cfg.timeBits.W)
+class HBSearchReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val miss_baddr = UInt(baddrBits.W)
+  val targ_time = UInt(timeBits.W)
 }
 
 /** [[HBSearchResp]] defines the interface for responding to a HB search request.
   * If the search is unsuccessful, then no response is made. 
   */
-class HBSearchResp(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val head = UInt(cfg.baddrBits.W)
+class HBSearchResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val head = UInt(baddrBits.W)
 }
 
 /** [[HistoryBuffer]] implements a history buffer, with BB heads labelled with timestamps.
   */
-class HistoryBuffer(cfg: EntanglingIPrefetcherConfig) extends Module {
+class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglingIPrefetcherParameters {
 
   /* Define the IO */
   val io = IO(new Bundle{
-    val insert_req = Flipped(Valid(new HBInsertReq(cfg)))
-    val search_req = Flipped(Valid(new HBSearchReq(cfg)))
-    val search_resp = Valid(new HBSearchResp(cfg))
+    val insert_req = Flipped(Valid(new HBInsertReq))
+    val search_req = Flipped(Valid(new HBSearchReq))
+    val search_resp = Valid(new HBSearchResp)
   })
 
   /* Create the history buffer.
@@ -330,20 +332,20 @@ class HistoryBuffer(cfg: EntanglingIPrefetcherConfig) extends Module {
    * as a candidate for entangling before first assignment.
    */
   class HBBundle extends Bundle {
-    val head = UInt(cfg.baddrBits.W)
-    val time = UInt(cfg.timeBits.W)
+    val head = UInt(baddrBits.W)
+    val time = UInt(timeBits.W)
   }
-  val hist_buf = RegInit(VecInit(Seq.fill(cfg.histBufLen)((new HBBundle).Lit(_.time -> 0xFFFFFFFFl.U))))
+  val hist_buf = RegInit(VecInit(Seq.fill(histBufLen)((new HBBundle).Lit(_.time -> 0xFFFFFFFFl.U))))
 
   /* Insert a new significant block into the history buffer */
   when(io.insert_req.valid) {
     hist_buf(0).head := io.insert_req.bits.head
     hist_buf(0).time := io.insert_req.bits.time
-    for (i <- 1 to cfg.histBufLen-1) {
+    for (i <- 1 to histBufLen-1) {
       hist_buf(i).head := hist_buf(i-1).head
       hist_buf(i).time := hist_buf(i-1).time
     }
-    for (i <- 0 to cfg.histBufLen-1) {
+    for (i <- 0 to histBufLen-1) {
       printf(s"!! [$i] head=%x time=%d\n", hist_buf(i).head, hist_buf(i).time)
     }
   }
@@ -354,18 +356,18 @@ class HistoryBuffer(cfg: EntanglingIPrefetcherConfig) extends Module {
    * find a match in a single clock cycle. However, this would be a very long combinatorial circuit.
    * Another option is to examine each entry in the history buffer in a separate cycle. Latency of the lookup
    * isn't a problem, but this would require a lot of extra registers.
-   * To balance this we can mix the above: split the history buffer into groups of cfg.histBufSearchFragLen size,
+   * To balance this we can mix the above: split the history buffer into groups of histBufSearchFragLen size,
    * and perform the search as a pipeline, taking one cycle to examine each group.
    * In order to do this, we will define a bundle which will store the state for each
    * stage of the search pipeline.
    */
   class HBSearchResultBundle extends Bundle {
-    val head = UInt(cfg.baddrBits.W)
+    val head = UInt(baddrBits.W)
     val valid = Bool()
   }
   class HBSearchBundle extends Bundle {
-    val req_baddr = UInt(cfg.baddrBits.W)
-    val targ_time = UInt(cfg.timeBits.W)
+    val req_baddr = UInt(baddrBits.W)
+    val targ_time = UInt(timeBits.W)
     val result = new HBSearchResultBundle
     val valid = Bool()
   }
@@ -381,7 +383,7 @@ class HistoryBuffer(cfg: EntanglingIPrefetcherConfig) extends Module {
   hb_search_init.valid := io.search_req.valid
  
   /* Now group up the history buffer and fold over the stages of the pipeline */
-  val hb_search_result = hist_buf.grouped(cfg.histBufSearchFragLen).foldLeft(hb_search_init)((prev, h) => {
+  val hb_search_result = hist_buf.grouped(histBufSearchFragLen).foldLeft(hb_search_init)((prev, h) => {
     val next = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
     when(prev.valid) {
       next.req_baddr := prev.req_baddr
@@ -409,29 +411,29 @@ class HistoryBuffer(cfg: EntanglingIPrefetcherConfig) extends Module {
 
 /** [[EntanglingTableBBNotifyReq]] defines the interface for notifying the entangling table that a new basic block has started.
   */ 
-class EntanglingTablePrefReq(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val baddr = UInt(cfg.baddrBits.W)
+class EntanglingTablePrefReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val baddr = UInt(baddrBits.W)
 }
 
 /** [[EntanglingTablePrefResp]] defines the interface for responding with BBs that should be prefetched.
   */ 
-class EntanglingTablePrefResp(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val head = UInt(cfg.baddrBits.W)
-  val size = UInt(cfg.lgMaxBBSize.W)
+class EntanglingTablePrefResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val head = UInt(baddrBits.W)
+  val size = UInt(lgMaxBBSize.W)
 }
 
 /** [[EntanglingTableBBUpdateReq]] defines the interface for updating a basic block size.
   */ 
-class EntanglingTableBBUpdateReq(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val head = UInt(cfg.baddrBits.W)
-  val size = UInt(cfg.lgMaxBBSize.W)
+class EntanglingTableBBUpdateReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val head = UInt(baddrBits.W)
+  val size = UInt(lgMaxBBSize.W)
 }
 
 /** [[EntanglingTableEntangleReq]] defines the interface for requesting an entangling is made
   */ 
-class EntanglingTableEntangleReq(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val src = UInt(cfg.baddrBits.W)
-  val dst = UInt(cfg.baddrBits.W)
+class EntanglingTableEntangleReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val src = UInt(baddrBits.W)
+  val dst = UInt(baddrBits.W)
 }
 
 /** [[EntanglingTable]] implements an entangling table.
@@ -444,16 +446,16 @@ class EntanglingTableEntangleReq(cfg: EntanglingIPrefetcherConfig) extends Bundl
   * The entangling will respond only to notifications of newly seen baddrs with BBs to prefetch,
   * but only if that baddr happens to be present in the entangling table
   */
-class EntanglingTable(cfg: EntanglingIPrefetcherConfig) extends Module {
+class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntanglingIPrefetcherParameters {
 
   /* Define the IO.
    * The input IO is decoupled as it needs to be queued (as accessing the entangling table reduces what can be done at once).
    */
   val io = IO(new Bundle {
-    val pref_req = Flipped(Decoupled(new EntanglingTablePrefReq(cfg)))
-    val bb_update_req = Flipped(Decoupled(new EntanglingTableBBUpdateReq(cfg)))
-    val entangle_req = Flipped(Decoupled(new EntanglingTableEntangleReq(cfg)))
-    val pref_resp = Valid(new EntanglingTablePrefResp(cfg))
+    val pref_req = Flipped(Decoupled(new EntanglingTablePrefReq))
+    val bb_update_req = Flipped(Decoupled(new EntanglingTableBBUpdateReq))
+    val entangle_req = Flipped(Decoupled(new EntanglingTableEntangleReq))
+    val pref_resp = Valid(new EntanglingTablePrefResp)
   })
 
   /* Define the state register */
@@ -464,23 +466,23 @@ class EntanglingTable(cfg: EntanglingIPrefetcherConfig) extends Module {
 
   /* Define the tag and size SRAM */
   class TagSizeBundle extends Bundle {
-    val tag = UInt(cfg.entTagBits.W)
-    val size = UInt(cfg.lgMaxBBSize.W)
+    val tag = UInt(entTagBits.W)
+    val size = UInt(lgMaxBBSize.W)
     val valid = Bool()
   }
   val tag_size_array = DescribedSRAM(
     name = "tag_and_size_array",
     desc = "Entangling Prefetcher Tag and Size Array",
-    size = cfg.nSets,
-    data = Vec(cfg.nWays, new TagSizeBundle)
+    size = entanglingNSets,
+    data = Vec(entanglingNWays, new TagSizeBundle)
   )
 
   /* Define the entangling SRAM */
   val entangling_array = DescribedSRAM(
     name = "entangling_array",
     desc = "Entangling Prefetcher Entangling Array",
-    size = cfg.nSets,
-    data = Vec(cfg.nWays, UInt(63.W))
+    size = entanglingNSets,
+    data = Vec(entanglingNWays, UInt(63.W))
   ) 
 
 }
@@ -489,24 +491,24 @@ class EntanglingTable(cfg: EntanglingIPrefetcherConfig) extends Module {
 
 /** [[EntanglingIPrefetcherFetchReq]] defines the interface for notifying the prefetcher of a fetch.
   */ 
-class EntanglingIPrefetcherFetchReq(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val paddr = UInt(cfg.paddrBits.W)
-  val time = UInt(cfg.timeBits.W)
+class EntanglingIPrefetcherFetchReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val paddr = UInt(paddrBits.W)
+  val time = UInt(timeBits.W)
 }
 
 /** [[EntanglingIPrefetcherMissReq]] defines the interface for notifying the prefetcher of a cache miss.
  */
-class EntanglingIPrefetcherMissReq(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val paddr = UInt(cfg.paddrBits.W)
-  val start = UInt(cfg.timeBits.W)
-  val end = UInt(cfg.timeBits.W)
+class EntanglingIPrefetcherMissReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val paddr = UInt(paddrBits.W)
+  val start = UInt(timeBits.W)
+  val end = UInt(timeBits.W)
 }
 
 /** [[EntanglingIPrefetcherMissReq]] defines the interface for notifying the prefetcher of a cache miss.
  */
-class EntanglingIPrefetcherPrefResp(cfg: EntanglingIPrefetcherConfig) extends Bundle {
-  val paddr = UInt(cfg.paddrBits.W)
-  val blocks = UInt(cfg.lgMaxBBSize.W)
+class EntanglingIPrefetcherPrefResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val paddr = UInt(paddrBits.W)
+  val blocks = UInt(lgMaxBBSize.W)
 }
 
 /** [[EntanglingIPrefetcher]] implements an entangling instruction prefetcher
@@ -519,28 +521,28 @@ class EntanglingIPrefetcherPrefResp(cfg: EntanglingIPrefetcherConfig) extends Bu
   * 
   * The prefetcher will respond with basic blocks that it thinks should be prefetched.
   */
-class EntanglingIPrefetcher(cfg: EntanglingIPrefetcherConfig) extends Module {
+class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasEntanglingIPrefetcherParameters {
 
   /* The io for the prefetcher */
   val io = IO(new Bundle {
-    val fetch_req = Flipped(Valid(new EntanglingIPrefetcherFetchReq(cfg)))
-    val miss_req = Flipped(Valid(new EntanglingIPrefetcherMissReq(cfg)))
+    val fetch_req = Flipped(Valid(new EntanglingIPrefetcherFetchReq))
+    val miss_req = Flipped(Valid(new EntanglingIPrefetcherMissReq))
   })
 
 
 
   /* Create the BB counter */
-  val bb_counter = Module(new BBCounter(cfg))
+  val bb_counter = Module(new BBCounter)
 
   /* Connect its input IO */
   bb_counter.io.req.valid := io.fetch_req.valid
-  bb_counter.io.req.bits.baddr := io.fetch_req.bits.paddr >> cfg.blockOffBits
+  bb_counter.io.req.bits.baddr := io.fetch_req.bits.paddr >> blockOffBits
   bb_counter.io.req.bits.time := io.fetch_req.bits.time
 
 
 
   /* Create the history buffer */
-  val history_buffer = Module(new HistoryBuffer(cfg))
+  val history_buffer = Module(new HistoryBuffer)
 
   /* Link up the insertion IO */
   history_buffer.io.insert_req.valid := bb_counter.io.resp.done
@@ -551,7 +553,7 @@ class EntanglingIPrefetcher(cfg: EntanglingIPrefetcherConfig) extends Module {
    *  - the miss is invalid, or
    *  - the miss address isn't for this BB's head.
    */
-  val miss_baddr = io.miss_req.bits.paddr >> cfg.blockOffBits
+  val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
   history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
   history_buffer.io.search_req.bits.miss_baddr := miss_baddr
   history_buffer.io.search_req.bits.targ_time := io.miss_req.bits.start - (io.miss_req.bits.end - io.miss_req.bits.start)
@@ -561,17 +563,17 @@ class EntanglingIPrefetcher(cfg: EntanglingIPrefetcherConfig) extends Module {
 
 
 /** [[EntanglingTest]] instruments tests for block address compression. */
-class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int, cfg: EntanglingIPrefetcherConfig) extends UnitTest {
+class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int)(implicit val p: Parameters) extends UnitTest with HasEntanglingIPrefetcherParameters {
   /* The tests must be within a UnitTestModule */
   class Impl extends UnitTestModule {
     /* Create an encoder and decoder */
-    val encoder = Module(new EntanglingEncoder(true, cfg))
-    val decoder = Module(new EntanglingDecoder(cfg))
+    val encoder = Module(new EntanglingEncoder)
+    val decoder = Module(new EntanglingDecoder)
 
     /* Create registers for the inputs */
     val test_len_in = RegInit(baddrs.length.U)
-    val test_baddrs_in = RegInit(VecInit(baddrs.appendedAll(Seq.fill(7-baddrs.length)(0)).map(_.U(cfg.baddrBits.W))))
-    val test_head = RegInit(head.U(cfg.baddrBits.W))
+    val test_baddrs_in = RegInit(VecInit(baddrs.appendedAll(Seq.fill(7-baddrs.length)(0)).map(_.U(baddrBits.W))))
+    val test_head = RegInit(head.U(baddrBits.W))
     val test_valid_in = RegNext(io.start, false.B)
 
     /* Perform the encoding */
@@ -637,12 +639,12 @@ class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int, cfg: 
 
 
 /** [[BasicBlockTest]] instruments tests for basic block accumulation. */
-class BasicBlockTest(id: Int, in: Seq[BBCounterReq], out: Seq[BBCounterResp], cfg: EntanglingIPrefetcherConfig) extends UnitTest {
+class BasicBlockTest(id: Int, in: Seq[BBCounterReq], out: Seq[BBCounterResp])(implicit val p: Parameters) extends UnitTest with HasEntanglingIPrefetcherParameters {
   /* The tests must be within a UnitTestModule */
   class Impl extends UnitTestModule {
 
     /* Create the BB counter */
-    val bb_counter = Module(new BBCounter(cfg))
+    val bb_counter = Module(new BBCounter)
     
     /* Create a register array for the test sequences */
     assert(in.length == out.length)

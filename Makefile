@@ -3,7 +3,7 @@ base_dir=$(abspath ./)
 CHISEL_VERSION=3.6.0
 MODEL ?= TestHarness
 PROJECT ?= freechips.rocketchip.system
-CONFIG ?= DefaultConfig
+CONFIG ?= EntanglingIPrefetcherConfig
 CONFIG_FULL ?= $(PROJECT).$(CONFIG)
 MILL ?= mill
 RUN ?= scratch/hello_world
@@ -27,12 +27,12 @@ verilog:
 
 
 
-test.elf.ent:
-	cd $(base_dir) && $(MILL) emulator[freechips.rocketchip.unittest.TestHarness,freechips.rocketchip.unittest.EntanglerUnitTestConfig].elf
+test.elf:
+	cd $(base_dir) && $(MILL) emulator[freechips.rocketchip.unittest.TestHarness,freechips.rocketchip.unittest.EntanglingIPrefetcherUnitTestConfig].elf
 
-test.run.ent: test.elf.ent
-	$(base_dir)/out/emulator/freechips.rocketchip.unittest.TestHarness/freechips.rocketchip.unittest.EntanglerUnitTestConfig/verilator/elf.dest/emulator \
-	+verbose pk >scratch/test.ent.log 2>&1
+test.run: test.elf
+	$(base_dir)/out/emulator/freechips.rocketchip.unittest.TestHarness/freechips.rocketchip.unittest.EntanglingIPrefetcherUnitTestConfig/verilator/elf.dest/emulator \
+	+verbose pk >scratch/test.log 2>&1
 
 
 
