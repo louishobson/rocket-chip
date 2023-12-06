@@ -5,6 +5,9 @@ MODEL ?= TestHarness
 PROJECT ?= freechips.rocketchip.system
 CONFIG ?= EntanglingIPrefetcherConfig
 CONFIG_FULL ?= $(PROJECT).$(CONFIG)
+TEST_PROJECT ?= freechips.rocketchip.tiletest
+TEST_CONFIG ?= EntanglingIPrefetcherUnitTestConfig
+TEST_CONFIG_FULL ?= $(TEST_PROJECT).$(TEST_CONFIG)
 MILL ?= mill
 RUN ?= scratch/hello_world
 
@@ -23,24 +26,24 @@ bsp: bloop
 
 
 verilog:
-	cd $(base_dir) && $(MILL) emulator[freechips.rocketchip.system.TestHarness,$(CONFIG_FULL)].mfccompiler.compile
+	cd $(base_dir) && $(MILL) emulator[$(PROJECT).TestHarness,$(CONFIG_FULL)].mfccompiler.compile
 
 
 
 test.elf:
-	cd $(base_dir) && $(MILL) emulator[freechips.rocketchip.unittest.TestHarness,freechips.rocketchip.unittest.EntanglingIPrefetcherUnitTestConfig].elf
+	cd $(base_dir) && $(MILL) emulator[$(TEST_PROJECT).TestHarness,$(TEST_CONFIG_FULL)].elf
 
 test.run: test.elf
-	$(base_dir)/out/emulator/freechips.rocketchip.unittest.TestHarness/freechips.rocketchip.unittest.EntanglingIPrefetcherUnitTestConfig/verilator/elf.dest/emulator \
+	$(base_dir)/out/emulator/$(TEST_PROJECT).TestHarness/$(TEST_CONFIG_FULL)/verilator/elf.dest/emulator \
 	+verbose pk >scratch/test.log 2>&1
 
 
 
 vsim:
-	mill emulator[freechips.rocketchip.system.TestHarness,$(CONFIG_FULL)].elf
+	mill emulator[$(PROJECT).TestHarness,$(CONFIG_FULL)].elf
 
 vsim.trace:
-	mill emulator[freechips.rocketchip.system.TestHarness,$(CONFIG_FULL)].elf_trace
+	mill emulator[$(PROJECT).TestHarness,$(CONFIG_FULL)].elf_trace
 
 
 
@@ -51,13 +54,13 @@ vsim.trace:
 	$(RISCV_CC) $< -o $@
 
 run: vsim $(RUN).riscv
-	$(base_dir)/out/emulator/freechips.rocketchip.system.TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator \
+	$(base_dir)/out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator \
 	+verbose \
 	pk $(RUN).riscv \
 	2>&1 | spike-dasm > $(RUN).log
 
 run.trace: vsim.trace $(RUN).riscv
-	$(base_dir)/out/emulator/freechips.rocketchip.system.TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator \
+	$(base_dir)/out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator \
 	+verbose \
 	-v $(RUN).vcd \
 	pk $(RUN).riscv \
@@ -66,19 +69,19 @@ run.trace: vsim.trace $(RUN).riscv
 
 
 clean.emulator:
-	rm -r out/emulator/freechips.rocketchip.system.TestHarness/$(CONFIG_FULL)
+	rm -r out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)
 
 clean.verilator:
-	rm -r out/emulator/freechips.rocketchip.system.TestHarness/$(CONFIG_FULL)/verilator
+	rm -r out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator
 
 clean.verilog:
-	rm -r out/emulator/freechips.rocketchip.system.TestHarness/$(CONFIG_FULL)/mfccompiler
+	rm -r out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/mfccompiler
 
 clean.emulator.all:
 	rm -r out/emulator/
 
 clean.test:
-	rm -r out/emulator/freechips.rocketchip.unittest.TestHarness
+	rm -r out/emulator/$(TEST_PROJECT).TestHarness
 
 clean.purge:
 	rm -r out/
