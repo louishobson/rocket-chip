@@ -83,5 +83,8 @@ clean.emulator.all:
 clean.test:
 	rm -r out/emulator/$(TEST_PROJECT).TestHarness
 
+clean.test.verilator:
+	rm -r out/emulator/$(TEST_PROJECT).TestHarness/$(CONFIG_FULL)/verilator
+
 clean.purge:
 	rm -r out/
