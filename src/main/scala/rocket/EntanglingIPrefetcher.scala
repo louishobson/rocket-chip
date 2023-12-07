@@ -9,7 +9,6 @@ import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.util.{DescribedSRAM}
 import freechips.rocketchip.unittest._
 import freechips.rocketchip.diplomacy._
-import org.chipsalliance.cde.config.Field
 
 
 
@@ -24,9 +23,7 @@ case class EntanglingIPrefetcherParams(
   histBufLen: Int = 8,
   /* The minimum size of a 'significant' BB */
   sigBBSize: Int = 2,
-  /* The number of elements of the history buffer to search
-   * in one combinatorial path.
-   */
+  /* The number of elements of the history buffer to search in one combinatorial path */
   histBufSearchFragLen: Int = 4,
   /* The ways and sets of the entangling table */
   nWays: Int = 4,
@@ -59,6 +56,10 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
 
   /* The number of bits required to store a BB size */
   def lgMaxBBSize = log2Up(maxBBSize + 1).toInt
+
+  /* the history buffer search latency */
+  def histBufSearchLatency = Math.ceil(histBufLen/histBufSearchFragLen).toInt + 1
+
 }
 
 
@@ -280,7 +281,7 @@ class BBCounter(implicit p: Parameters) extends CoreModule with HasEntanglingIPr
 
   /* Print on new inputs */
   when(io.req.valid) {
-    printf("## [%d] io.req.bits.baddr %x; bb_cont %d; bb_next %d; bb_head %x; bb_size %d\n", io.req.bits.time, io.req.bits.baddr, bb_cont, bb_next, bb_head, bb_size)
+    //printf("## [%d] io.req.bits.baddr %x; bb_cont %d; bb_next %d; bb_head %x; bb_size %d\n", io.req.bits.time, io.req.bits.baddr, bb_cont, bb_next, bb_head, bb_size)
   }
 
   /* Potentially output a completed significant BB. This is when a basic block reaches a size of sigBBSize.
@@ -305,7 +306,6 @@ class HBInsertReq(implicit p: Parameters) extends CoreBundle with HasEntanglingI
 /** [[HBSearchReq]] defines the interface for requesting a search of the HB.
   */
 class HBSearchReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
-  val miss_baddr = UInt(baddrBits.W)
   val targ_time = UInt(timeBits.W)
 }
 
@@ -346,8 +346,9 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
       hist_buf(i).time := hist_buf(i-1).time
     }
     for (i <- 0 to histBufLen-1) {
-      printf(s"!! [$i] head=%x time=%d\n", hist_buf(i).head, hist_buf(i).time)
+      //printf(s"!! [$i] head=%x time=%d\n", hist_buf(i).head, hist_buf(i).time)
     }
+    //printf("\n")
   }
 
   /* Here, we want to search through the history buffer for the first entry with a timestamp
@@ -366,7 +367,6 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
     val valid = Bool()
   }
   class HBSearchBundle extends Bundle {
-    val req_baddr = UInt(baddrBits.W)
     val targ_time = UInt(timeBits.W)
     val result = new HBSearchResultBundle
     val valid = Bool()
@@ -375,7 +375,6 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Define the initial state of the search pipeline */
   val hb_search_init = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
   when(io.search_req.valid) {
-    hb_search_init.req_baddr := io.search_req.bits.miss_baddr
     hb_search_init.targ_time := io.search_req.bits.targ_time
     hb_search_init.result.head := DontCare
     hb_search_init.result.valid := false.B
@@ -386,7 +385,6 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   val hb_search_result = hist_buf.grouped(histBufSearchFragLen).foldLeft(hb_search_init)((prev, h) => {
     val next = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
     when(prev.valid) {
-      next.req_baddr := prev.req_baddr
       next.targ_time := prev.targ_time
       next.result := h.foldLeft(prev.result)((p, x) => {
         val w = Wire(new HBSearchResultBundle)
@@ -555,15 +553,28 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
    */
   val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
   history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
-  history_buffer.io.search_req.bits.miss_baddr := miss_baddr
   history_buffer.io.search_req.bits.targ_time := io.miss_req.bits.start - (io.miss_req.bits.end - io.miss_req.bits.start)
 
 }
 
 
 
-/** [[EntanglingTest]] instruments tests for block address compression. */
-class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int)(implicit val p: Parameters) extends UnitTest with HasEntanglingIPrefetcherParameters {
+/** [[EntanglingTest]] instruments tests for block address compression. 
+  *
+  * @param id The ID of the test (for debugging purposes).
+  * @param head The head baddr that we are encoding/decoding against.
+  * @param baddrs A sequence of baddrs to encode.
+  * @param exp_drops The expected number of baddrs that should be dropped during the encoding process.
+  * 
+  * During the test, the input baddrs are encoded and then immediately encoded. We expect that
+  *   - all baddrs we receive from decoding were baddrs that we encoded,
+  *   - the expected number of baddrs were dropped during encoding,
+  *   - and the last baddr in the input sequence is present in the output sequence.
+  */
+class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int)(implicit val p: Parameters) 
+    extends UnitTest 
+    with HasEntanglingIPrefetcherParameters 
+{
   /* The tests must be within a UnitTestModule */
   class Impl extends UnitTestModule {
     /* Create an encoder and decoder */
@@ -638,21 +649,123 @@ class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int)(impli
 
 
 
-/** [[BasicBlockTest]] instruments tests for basic block accumulation. */
-class BasicBlockTest(id: Int, in: Seq[BBCounterReq], out: Seq[BBCounterResp])(implicit val p: Parameters) extends UnitTest with HasEntanglingIPrefetcherParameters {
+/** [[BasicBlockTest]] instruments tests for basic block accumulation. 
+  *
+  * @param id The ID of the test (for debugging purposes).
+  * @param in The sequence of requests to make to the BB counter, as well as a validity flag.
+  * @param out The sequence of responses to expect from the BB counter. The corresponding response for 
+  * a request is checked the cycle after that request is made. 
+  */
+class BasicBlockTest(id: Int, in: Seq[(BBCounterReq, Bool)], out: Seq[BBCounterResp])(implicit val p: Parameters) 
+    extends UnitTest 
+    with HasEntanglingIPrefetcherParameters 
+{
   /* The tests must be within a UnitTestModule */
   class Impl extends UnitTestModule {
 
     /* Create the BB counter */
     val bb_counter = Module(new BBCounter)
-    
+
     /* Create a register array for the test sequences */
     assert(in.length == out.length)
-    val in_reg = RegInit(VecInit(in))
+    val in_bits_reg = RegInit(VecInit(in.map(_._1)))
+    val in_valid_reg = RegInit(VecInit(in.map(_._2)))
     val out_reg = RegInit(VecInit(out))
 
-    /* Iterate over the inputs and outputs */
-    val i = RegInit(0.U(log2Up(in.length+1).W))
+    /* Block until we have started */
+    val started = RegEnable(io.start, false.B, io.start)
+    
+    /* Create an iterator for passing through the inputs and outputs */
+    val i = RegInit(0.U(log2Up(in.length+2).W))
+    when(started && i < (in.length+1).U) { i := i + 1.U }
+
+    /* Pass-in the inputs */
+    bb_counter.io.req.valid := started && i < in.length.U && in_valid_reg(i)
+    bb_counter.io.req.bits := in_bits_reg(i)
+
+    /* Check the outputs */
+    when(i > 0.U && i <= out.length.U) {
+      val j = i-1.U // if I use (i-1.U) directly for the below, then i is coerced to a smaller number of bits before subtracting one
+      assert(bb_counter.io.resp === out_reg(j), 
+        s"[BasicBlockTest $id] i=%d expected {%x, %d, %d, %d}, but got {%x, %d, %d, %d}",
+        i, out_reg(j).head, out_reg(j).time, out_reg(j).size, out_reg(j).done,
+        bb_counter.io.resp.head, bb_counter.io.resp.time, bb_counter.io.resp.size, bb_counter.io.resp.done,
+      )
+    }
+
+    /* We are done if we get through all of the inputs without failing */
+    io.finished := i === (in.length+1).U
+  }
+
+  /* Instantiate the test module */
+  val dut = Module(new Impl)
+
+  /* Connect the UnitTest IO to the UnitTestModule IO */
+  dut.io.start := io.start 
+  io.finished := dut.io.finished
+}
+
+
+
+/** [[HistoryBufferTest]] instruments tests for inserting and searching the history buffer. 
+  * 
+  * @param id The ID of the test (for debugging purposes).
+  * @param in A sequence of insert requests to make to the history buffer.
+  * @param delay A delay (in cycles) before making the search requests.
+  * @param queries A sequence of queries to make after delay cycles.
+  * @param out A sequence of search responses to expect from the search requests.
+  */
+class HistoryBufferTest(id: Int, in: Seq[HBInsertReq], delay: Int, queries: Seq[HBSearchReq], out: Seq[Option[HBSearchResp]])(implicit val p: Parameters) 
+    extends UnitTest 
+    with HasEntanglingIPrefetcherParameters 
+{
+  /* The tests must be within a UnitTestModule */
+  class Impl extends UnitTestModule {
+    
+    /* Create the history buffer */
+    val history_buffer = Module(new HistoryBuffer)
+
+    /* Create a register array for the sequences */
+    assert(queries.length == out.length)
+    val in_reg = RegInit(VecInit(in))
+    val queries_reg = RegInit(VecInit(queries))
+    val out_bits_reg = RegInit(VecInit(out.map(_.getOrElse((new HBSearchResp).Lit()))))
+    val out_valid_reg = RegInit(VecInit(out.map(_.isDefined.B)))
+
+    /* Block until we have started */
+    val started = RegEnable(io.start, false.B, io.start)
+
+    /* Create registers to iterate over the inputs/outputs */
+    def maxIterations = in.length.max(delay+queries.length+histBufSearchLatency)
+    val i = RegInit(0.U(log2Up(maxIterations+1).W))
+    val j = i - delay.U
+    val k = j - histBufSearchLatency.U
+
+    /* Iterate i */
+    when(started && i =/= maxIterations.U) { i := i + 1.U }
+
+    /* Wire up the insert requests */
+    history_buffer.io.insert_req.valid := started && i < in.length.U
+    history_buffer.io.insert_req.bits := in_reg(i)
+
+    /* Wire up the search requests */
+    history_buffer.io.search_req.valid := started && i >= delay.U && j < queries.length.U
+    history_buffer.io.search_req.bits := queries_reg(j)
+
+    /* Check the search results */
+    when(started && i >= (delay+histBufSearchLatency).U && k < out.length.U) {
+      assert(history_buffer.io.search_resp.valid === out_valid_reg(k),
+        s"[HistoryBufferTest $id] i=%d j=%d k=%d expected output validity %d, but got %d",
+        i, j, k, out_valid_reg(k), history_buffer.io.search_resp.valid
+      )
+      assert(!out_valid_reg(k) || history_buffer.io.search_resp.bits === out_bits_reg(k),
+        s"[HistoryBufferTest $id] i=%d j=%d k=%d expected result %x, but got %x",
+        i, j, k, out_bits_reg(k).head, history_buffer.io.search_resp.bits.head
+      )
+    }
+
+    /* Set the finished flag */
+    io.finished := i === maxIterations.U
   }
 
   /* Instantiate the test module */

@@ -17,7 +17,7 @@ class TestHarness()(implicit p: Parameters) extends Module {
   })
 
   /* Instantiate the LazyModule for the Rocket system, but DO NOT make reference to the inner module.
-   * This way, Diplomacy will negotiate all of the parameters, but won't actually instantiate tiles.
+   * This way Diplomacy will negotiate all of the parameters, but won't actually instantiate tiles.
    */
   val lRocketSystem = LazyModule(new ExampleRocketSystem)
 
