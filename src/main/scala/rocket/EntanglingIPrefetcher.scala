@@ -3,7 +3,7 @@ package freechips.rocketchip.rocket
 import chisel3._
 import chisel3.experimental.BundleLiterals._
 import chisel3.experimental.conversions._
-import chisel3.util.{Cat, Decoupled, Enum, Mux1H, OHToUInt, PopCount, Queue, RegEnable, ShiftRegister, Valid, isPow2, log2Up, switch, is}
+import chisel3.util.{Cat, Decoupled, Enum, Mux1H, OHToUInt, PopCount, Queue, RegEnable, ShiftRegister, UIntToOH, Valid, isPow2, log2Up, switch, is}
 import chisel3.util.random.LFSR
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tile._
@@ -24,6 +24,8 @@ case class EntanglingIPrefetcherParams(
   histBufLen: Int = 8,
   /* The minimum size of a 'significant' BB */
   sigBBSize: Int = 2,
+  /* The maximum forward-jumping gap in baddrs that should still be considered the same basic block */
+  maxBBGapSize: Int = 2, 
   /* The number of elements of the history buffer to search in one combinatorial path */
   histBufSearchFragLen: Int = 4,
   /* The ways and sets of the entangling table */
@@ -47,6 +49,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def maxBBSize = entanglingParams.maxBBSize
   def histBufLen = entanglingParams.histBufLen
   def sigBBSize = entanglingParams.sigBBSize
+  def maxBBGapSize = entanglingParams.maxBBGapSize
   def histBufSearchFragLen = entanglingParams.histBufSearchFragLen
   def entNWays = entanglingParams.nWays
   def entNSets = entanglingParams.nSets
@@ -66,7 +69,11 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def lgMaxBBSize = log2Up(maxBBSize + 1).toInt
 
   /* the history buffer search latency */
-  def histBufSearchLatency = Math.ceil(histBufLen/histBufSearchFragLen).toInt + 1
+  def histBufSearchLatency = math.ceil(histBufLen/histBufSearchFragLen).toInt + 1
+
+  /* The maximum possible baddr and time */
+  def maxTime = (math.pow(2, timeBits)-1).toInt
+  def maxBaddr = (math.pow(2, baddrBits)-1).toInt
 }
 
 
@@ -144,7 +151,7 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
       io.resp.valid := true.B
       for(i <- 1 to 6) {
         when(i.U === req.len) {
-          io.resp.bits.ents := req.len ## req.baddrs.take(i).map(WireDefault(UInt((60/i).W), _)).reduce(_##_)
+          io.resp.bits.ents := req.len ## req.baddrs.take(i).map(_.pad(60/i)(60/i-1,0)).reduce(_##_)
         }
       }
     } 
@@ -240,20 +247,21 @@ class BBCounter(implicit p: Parameters) extends CoreModule with HasEntanglingIPr
   val bb_time = RegInit(0.U(timeBits.W))
 
   /* Calculate the change in io.req.bits.baddr compared to the current head.
+   * We need to be quite careful regarding overflow while performing these calculations.
    * bb_cont indicates that we are within the same BB (true if baddr is not valid).
-   * bb_next indicates that we have just extended the BB by one cache line (false if baddr is not valid).
+   * bb_grow indicates that we have just extended the BB size (false if baddr is not valid).
    */
   val req_bdiff = io.req.bits.baddr - bb_head
-  val bb_cont = !io.req.valid || (req_bdiff <= bb_size && bb_size =/= maxBBSize.U)
-  val bb_next = io.req.valid && req_bdiff === bb_size && bb_size =/= maxBBSize.U
+  val bb_cont = !io.req.valid || (io.req.bits.baddr >= bb_head && req_bdiff <= bb_size +& maxBBGapSize.U && req_bdiff < maxBBSize.U)
+  val bb_grow = io.req.valid && bb_cont && req_bdiff >= bb_size
 
   /* Update the registers */
-  when(!bb_cont) { 
+  when(!bb_cont || bb_size === 0.U) { 
     bb_head := io.req.bits.baddr 
     bb_time := io.req.bits.time 
     bb_size := 1.U
-  } .elsewhen(bb_next) { 
-    bb_size := bb_size + 1.U 
+  } .elsewhen(bb_grow) { 
+    bb_size := req_bdiff + 1.U
   }
 
   /* Potentially output a completed significant BB. This is when a basic block reaches a size of sigBBSize.
@@ -307,7 +315,7 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
     val head = UInt(baddrBits.W)
     val time = UInt(timeBits.W)
   }
-  val hist_buf = RegInit(VecInit(Seq.fill(histBufLen)((new HBBundle).Lit(_.time -> 0xFFFFFFFFl.U))))
+  val hist_buf = RegInit(VecInit(Seq.fill(histBufLen)((new HBBundle).Lit(_.time -> maxTime.U))))
 
   /* Insert a new significant block into the history buffer */
   when(io.insert_req.valid) {
@@ -528,7 +536,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
   /* If write_repl is true, then we need to perform random replacement */
   val write_random_way = LFSR(8, write_repl && write_enable)(log2Up(entNWays)-1, 0)
-  val write_random_mask = VecInit((0 until entNWays).map(_.U === write_random_way))
+  val write_random_mask = VecInit(UIntToOH(write_random_way).asBools)
   val write_true_mask = Mux(write_repl, write_random_mask, write_mask)
 
 
@@ -977,10 +985,11 @@ class BBCounterTest(id: Int, in: Seq[(BBCounterReq, Bool)], out: Seq[BBCounterRe
 
     /* Check the outputs */
     when(i > 0.U && i <= out.length.U) {
-      val j = i-1.U // if I use (i-1.U) directly for the below, then i is coerced to a smaller number of bits before subtracting one
+      val j = i-1.U
       assert(bb_counter.io.resp === out_rom(j), 
-        s"[BBCounterTest $id] i=%d expected {%x, %d, %d, %d}, but got {%x, %d, %d, %d}",
+        s"[BBCounterTest $id] i=%d expected {%x, %d, %d, [%d]} after request {%x, %d, [%d]}, but got {%x, %d, %d, [%d]} ",
         i, out_rom(j).head, out_rom(j).time, out_rom(j).size, out_rom(j).done,
+        in_bits_rom(j).baddr, in_bits_rom(j).time, in_valid_rom(j),
         bb_counter.io.resp.head, bb_counter.io.resp.time, bb_counter.io.resp.size, bb_counter.io.resp.done,
       )
     }
@@ -1047,7 +1056,7 @@ class HistoryBufferTest(id: Int, in: Seq[HistoryBufferInsertReq], delay: Int, qu
     /* Check the search results */
     when(started && i >= (delay+histBufSearchLatency).U && k < out.length.U) {
       assert(history_buffer.io.search_resp.valid === out_valid_rom(k),
-        s"[HistoryBufferTest $id] i=%d j=%d k=%d expected output validity %d, but got %d",
+        s"[HistoryBufferTest $id] i=%d j=%d k=%d expected output validity [%d], but got [%d]",
         i, j, k, out_valid_rom(k), history_buffer.io.search_resp.valid
       )
       assert(!out_valid_rom(k) || history_buffer.io.search_resp.bits === out_bits_rom(k),
@@ -1119,13 +1128,11 @@ class EntanglingTableTest(
 
     /* Make the entangle requests */
     entangling_table.io.entangle_req.valid := req_fire && req_iter >= start_entangle_req.U && req_iter < start_pref_req.U
-    val req_iter_entangle = req_iter - start_entangle_req.U
-    entangling_table.io.entangle_req.bits := entangle_rom(req_iter_entangle)
+    entangling_table.io.entangle_req.bits := entangle_rom(req_iter -& start_entangle_req.U)
 
     /* Make the prefetch requests */
     entangling_table.io.pref_req.valid := req_fire && req_iter >= start_pref_req.U && req_iter < end_pref_req.U
-    val req_iter_pref = req_iter - start_pref_req.U
-    entangling_table.io.pref_req.bits := pref_req_rom(req_iter_pref)
+    entangling_table.io.pref_req.bits := pref_req_rom(req_iter -& start_pref_req.U)
 
     /* Check the results of prefetching */
     val resp_iter = RegInit(0.U(log2Up(prefResp.length+1).W))

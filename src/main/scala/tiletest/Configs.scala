@@ -12,7 +12,6 @@ import chisel3.util.log2Up
 class WithEntanglingTests extends Config((site, here, up) => {
   case UnitTests => (q: Parameters) => {
     class Tests(implicit val p: Parameters) extends HasEntanglingIPrefetcherParameters {
-      def maxBaddr = (Math.pow(2, baddrBits)-1).toInt
       def midBaddr = 1 << (baddrBits-1)
       def produce = Seq(
         /* TEST 1: We can encode any two arbitrary addresses without compression */
@@ -41,19 +40,19 @@ class WithBBCounterTests extends Config((site, here, up) => {
       def req(baddr: Int, time: Int, valid: Boolean = true) = ((new BBCounterReq).Lit(_.baddr -> baddr.U, _.time -> time.U), valid.B)
       def resp(head: Int, time: Int, size: Int, done: Boolean) = (new BBCounterResp).Lit(_.head -> head.U, _.time -> time.U, _.size -> size.U, _.done -> done.B)
       def produce = Seq(
-        /* TEST 1: a sequence of consecutive addresses */
+        /* TEST 1: a sequence of consecutive addresses just increases the size of the BB */
         Module(new BBCounterTest(0, 
           Seq.tabulate(16)(i => req(i, i)),
           Seq.tabulate(16)(i => resp(0, 0, i+1, false))
         )),
 
-        /* TEST 2: a sequence of increasing or equal addresses */
+        /* TEST 2: a sequence of increasing or equal addresses also just increases the size of the BB */
         Module(new BBCounterTest(1, 
           Seq.tabulate(16)(i => req((i/2).toInt, i)),
           Seq.tabulate(16)(i => resp(0, 0, (i/2).toInt+1, false))
         )),
 
-        /* TEST 3: a sequence of addresses all in one BB, but non-increasing */
+        /* TEST 3: a sequence of addresses all in one BB, but non-increasing, increases the size of the BB when appropriate */
         Module(new BBCounterTest(2, 
           Seq(0, 1, 2, 3, 0, 1, 2, 3, 1, 2, 3, 4).map(i => req(i, i)),
           Seq(1, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5).map(i => resp(0, 0, i, false))
@@ -68,8 +67,8 @@ class WithBBCounterTests extends Config((site, here, up) => {
 
         /* TEST 5: a jump forwards starts a new BB */
         Module(new BBCounterTest(4, 
-          Seq(req(0, 0), req(1, 1), req(2, 2), req(4, 3), req(5, 3)),
-          Seq(resp(0, 0, 1, false), resp(0, 0, 2, false), resp(0, 0, 3, true), resp(4, 3, 1, false), resp(4, 3, 2, false)),
+          Seq(req(0, 0), req(1, 1), req(2, 2), req(4+maxBBGapSize, 3), req(5+maxBBGapSize, 4)),
+          Seq(resp(0, 0, 1, false), resp(0, 0, 2, false), resp(0, 0, 3, true), resp(4+maxBBGapSize, 3, 1, false), resp(4+maxBBGapSize, 3, 2, false)),
         )),
 
         /* TEST 6: a jump backwards starts a new BB */
@@ -80,8 +79,14 @@ class WithBBCounterTests extends Config((site, here, up) => {
 
         /* TEST 7: inputs marked as invalid don't cause a change in BB */
         Module(new BBCounterTest(6, 
-          Seq(req(1, 0), req(2, 1), req(3, 2), req(0, 3, false), req(4, 4), req(6, 5, false), req(5, 6)),
+          Seq(req(1, 0), req(2, 1), req(3, 2), req(0, 3, false), req(4, 4), req(6+maxBBGapSize, 5, false), req(5, 6)),
           Seq(resp(1, 0, 1, false), resp(1, 0, 2, false), resp(1, 0, 3, false), resp(1, 0, 3, false), resp(1, 0, 4, false), resp(1, 0, 4, false), resp(1, 0, 5, false)),
+        )),
+
+        /* TEST 8: we can have gaps of maxBBGapSize and stay within the same BB */
+        Module(new BBCounterTest(7, 
+          Seq(0, 1, 2, 3+maxBBGapSize, 4+maxBBGapSize, 5+maxBBGapSize).map(i => req(i, i)),
+          Seq(1, 2, 3, 4+maxBBGapSize, 5+maxBBGapSize, 6+maxBBGapSize).map(i => resp(0, 0, i, false))
         )),
       )
     }
@@ -183,6 +188,19 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
           Seq(entangleReq(1, 2), entangleReq(1, 3), entangleReq(1, 4)), 
           Seq(prefetchReq(1)), 
           Seq(prefetchResp(1, 16), prefetchResp(2, 20), prefetchResp(3, 24), prefetchResp(4, 28))
+        )),
+
+        /* TEST 7: Creating an entangling for a non-existent source address has no effect */
+        Module(new EntanglingTableTest(6,
+          Seq(), Seq(entangleReq(0, 1)), Seq(prefetchReq(0)), Seq()
+        )),
+
+        /* TEST 8: Where no entry for a dst entangled address exists, no prefetch should be issued */
+        Module(new EntanglingTableTest(7,
+          Seq(updateReq(1, 16), updateReq(2, 20), updateReq(4, 28)), // Notice that no entry for baddr 3 is created 
+          Seq(entangleReq(1, 2), entangleReq(1, 3), entangleReq(1, 4)),
+          Seq(prefetchReq(1)), 
+          Seq(prefetchResp(1, 16), prefetchResp(2, 20), prefetchResp(4, 28)) // And we don't expect a prefetch response for baddr 3
         )),
       )
     }
