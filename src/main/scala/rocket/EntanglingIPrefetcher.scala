@@ -20,12 +20,12 @@ case class EntanglingIPrefetcherParams(
   timeBits: Int = 64,
   /* the maximum size of a BB */
   maxBBSize: Int = 63,
-  /* The length of the history buffer */
-  histBufLen: Int = 8,
   /* The minimum size of a 'significant' BB */
   sigBBSize: Int = 2,
   /* The maximum forward-jumping gap in baddrs that should still be considered the same basic block */
   maxBBGapSize: Int = 2, 
+  /* The length of the history buffer */
+  histBufLen: Int = 8,
   /* The number of elements of the history buffer to search in one combinatorial path */
   histBufSearchFragLen: Int = 4,
   /* The ways and sets of the entangling table */
@@ -535,8 +535,6 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   val write_random_way = LFSR(8, write_repl && write_enable)(log2Up(entNWays)-1, 0)
   val write_random_mask = VecInit(UIntToOH(write_random_way).asBools)
   val write_true_mask = Mux(write_repl, write_random_mask, write_mask)
-
-
 
   /* If we are doing random replacement, then we expect to write both a size and entangling sequence (or neither).
    * Otherwise we expect the mask to have exactly one bit set.

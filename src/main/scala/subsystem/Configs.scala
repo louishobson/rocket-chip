@@ -697,15 +697,32 @@ class WithCloneRocketTiles(n: Int = 1, cloneHart: Int = 0, overrideIdOffset: Opt
   }
 })
 
-class WithEntanglingIPrefetcher() extends Config((site, here, up) => {
-  case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
+class WithTransformedIPrefetcherParams(
+    f: EntanglingIPrefetcherParams => EntanglingIPrefetcherParams, 
+    create: Boolean = false
+) extends Config((site, here, up) => {
+  case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem)) map {
     case tp: RocketTileAttachParams => tp.copy(
       tileParams = tp.tileParams.copy(
         icache = tp.tileParams.icache.map(icache => icache.copy(
-          entanglingParams = icache.entanglingParams.orElse(Some(new EntanglingIPrefetcherParams))
+          entanglingParams = icache.entanglingParams.orElse(if (create) Some(new EntanglingIPrefetcherParams) else None).map(f(_))
         ))
       )
     )
     case t => t
   }
 })
+
+class WithEntanglingIPrefetcher() extends WithTransformedIPrefetcherParams(x=>x, true)
+
+class WithEntanglingIPrefetcherHBLen(len: Int) extends WithTransformedIPrefetcherParams(_.copy(
+  histBufLen = len
+))
+
+class WithEntanglingIPrefetcherBBLimits(sigSize: Int, maxGap: Int) extends WithTransformedIPrefetcherParams(_.copy(
+  sigBBSize = sigSize, maxBBGapSize = maxGap
+))
+
+class WithEntanglingIPrefetcherTableSize(nWays: Int, nSets: Int) extends WithTransformedIPrefetcherParams(_.copy(
+  nWays = nWays, nSets = nSets
+))
