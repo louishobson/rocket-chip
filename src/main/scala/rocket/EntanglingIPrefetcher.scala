@@ -286,7 +286,7 @@ class HistoryBufferInsertReq(implicit p: Parameters) extends CoreBundle with Has
 /** [[HistoryBufferSearchReq]] defines the interface for requesting a search of the HB.
   */
 class HistoryBufferSearchReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
-  val targ_time = UInt(timeBits.W)
+  val target_time = UInt(timeBits.W)
 }
 
 /** [[HistoryBufferSearchResp]] defines the interface for responding to a HB search request.
@@ -343,7 +343,7 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
     val valid = Bool()
   }
   class HBSearchBundle extends Bundle {
-    val targ_time = UInt(timeBits.W)
+    val target_time = UInt(timeBits.W)
     val result = new HBSearchResultBundle
     val valid = Bool()
   }
@@ -351,7 +351,7 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Define the initial state of the search pipeline */
   val hb_search_init = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
   when(io.search_req.valid) {
-    hb_search_init.targ_time := io.search_req.bits.targ_time
+    hb_search_init.target_time := io.search_req.bits.target_time
     hb_search_init.result.head := DontCare
     hb_search_init.result.valid := false.B
   }
@@ -361,10 +361,10 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   val hb_search_result = hist_buf.grouped(histBufSearchFragLen).foldLeft(hb_search_init)((prev, h) => {
     val next = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
     when(prev.valid) {
-      next.targ_time := prev.targ_time
+      next.target_time := prev.target_time
       next.result := h.foldLeft(prev.result)((p, x) => {
         val w = Wire(new HBSearchResultBundle)
-        when (!p.valid && x.time <= prev.targ_time) { 
+        when (!p.valid && x.time <= prev.target_time) { 
           w.head := x.head
           w.valid := true.B
         } .otherwise { w := p }
@@ -507,12 +507,9 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   /* Perform the read on entanglings */
   val read_raw_ents = entangling_array.read(read_baddr(entIdxBits-1, 0), read_ents_enable)
 
-  
-
   /* Check the tags and validity bits, asserting that we have a maximum of one hit */
   val read_hits = VecInit(read_raw_size_tag_valid.map(b => b._3(0) && b._2 === RegNext(read_baddr) >> entIdxBits))
   val read_hit = read_hits.reduce(_||_)
-  val read_way = OHToUInt(read_hits)
   assert(!read_enable || PopCount(read_hits) <= 1.U)
 
   /* Get the read size */
@@ -574,7 +571,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   switch(state) {
 
     /* Switch out of the ready state when there are requests to consume.
-     * Prioritise prefetch requests.
+     * Prioritize prefetch requests.
      */
     is(s_ready) {
       /* When we can move into the prefetch state, read the size and entanglings array and move into the decode state */
@@ -831,7 +828,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
    */
   val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
   history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
-  history_buffer.io.search_req.bits.targ_time := io.miss_req.bits.start - (io.miss_req.bits.end - io.miss_req.bits.start)
+  history_buffer.io.search_req.bits.target_time := io.miss_req.bits.start - (io.miss_req.bits.end - io.miss_req.bits.start)
 
 
 

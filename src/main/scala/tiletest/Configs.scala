@@ -98,7 +98,7 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
   case UnitTests => (q: Parameters) => {
     class Tests(implicit val p: Parameters) extends HasEntanglingIPrefetcherParameters {
       def insertReq(head: Int, time: Int) = (new HistoryBufferInsertReq).Lit(_.head -> head.U, _.time -> time.U)
-      def searchReq(time: Int) = (new HistoryBufferSearchReq).Lit(_.targ_time -> time.U)
+      def searchReq(time: Int) = (new HistoryBufferSearchReq).Lit(_.target_time -> time.U)
       def searchResp(head: Int) = Some((new HistoryBufferSearchResp).Lit(_.head -> head.U))
       def produce = Seq(
         /* TEST 1: We can search a non-full buffer for a positive result.
