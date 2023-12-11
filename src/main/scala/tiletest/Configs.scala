@@ -202,6 +202,14 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
           Seq(prefetchReq(1)), 
           Seq(prefetchResp(1, 16), prefetchResp(2, 20), prefetchResp(4, 28)) // And we don't expect a prefetch response for baddr 3
         )),
+
+        /* TEST 8: Entangling a dst baddr twice will only entangle it once */
+        Module(new EntanglingTableTest(8,
+          Seq(updateReq(1, 16), updateReq(2, 20)),
+          Seq(entangleReq(1, 2), entangleReq(1, 2)),
+          Seq(prefetchReq(1)), 
+          Seq(prefetchResp(1, 16), prefetchResp(2, 20))
+        )),
       )
     }
     new Tests()(q).produce ++ up.lift(UnitTests).map(_(q)).getOrElse(Seq())

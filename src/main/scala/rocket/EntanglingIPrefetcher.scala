@@ -10,6 +10,7 @@ import freechips.rocketchip.tile._
 import freechips.rocketchip.unittest._
 import freechips.rocketchip.util.{DescribedSRAM, Split}
 import org.chipsalliance.cde.config.Parameters
+import os.read
 
 
 
@@ -432,6 +433,10 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     val pref_resp = Valid(new EntanglingTablePrefetchResp)
   })
 
+  /* The prefetch response is invalid by default */
+  io.pref_resp.valid := false.B
+  io.pref_resp.bits := DontCare
+
 
 
   /* Define the state register */
@@ -465,9 +470,13 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
 
 
-  /* The prefetch response is invalid by default */
-  io.pref_resp.valid := false.B
-  io.pref_resp.bits := DontCare
+  /* Create an encoder and decoder (we only need one of each, they can be shared by the states) */
+  val encoder = Module(new EntanglingEncoder)
+  val decoder = Module(new EntanglingDecoder)
+
+  /* Default the encoder inputs */
+  encoder.io.req.valid := false.B
+  encoder.io.req.bits := DontCare
 
 
 
@@ -501,6 +510,9 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   val read_ents_enable = WireDefault(false.B)
   val read_enable = read_size_enable || read_ents_enable
 
+  /* Save the read address for the next cycle */
+  val read_baddr_prev = RegNext(read_baddr)
+
   /* Perform the read on the tags and sizes (we need to read the size to get the tag even if only entanglings are requested) */
   val read_raw_size_tag_valid = tag_size_array.read(read_baddr(entIdxBits-1, 0), read_enable).map(Split(_, entTagBits+1, 1))
 
@@ -508,13 +520,19 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   val read_raw_ents = entangling_array.read(read_baddr(entIdxBits-1, 0), read_ents_enable)
 
   /* Check the tags and validity bits, asserting that we have a maximum of one hit */
-  val read_hits = VecInit(read_raw_size_tag_valid.map(b => b._3(0) && b._2 === RegNext(read_baddr) >> entIdxBits))
+  val read_hits = VecInit(read_raw_size_tag_valid.map(b => b._3(0) && b._2 === read_baddr_prev >> entIdxBits))
   val read_hit = read_hits.reduce(_||_)
   assert(!read_enable || PopCount(read_hits) <= 1.U)
 
   /* Get the read size */
   val read_size = Mux1H(read_hits, read_raw_size_tag_valid.map(_._1))
   val read_ents = Mux1H(read_hits, read_raw_ents)
+
+  /* Decode the entanglings */
+  decoder.io.req.head := read_baddr_prev
+  decoder.io.req.ents := read_ents
+  val read_ents_baddrs = decoder.io.resp.baddrs
+  val read_ents_len = decoder.io.resp.len
 
 
 
@@ -551,17 +569,6 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   when(write_ents_enable) {
     entangling_array.write(write_baddr(entIdxBits-1, 0), Seq.fill(entNWays)(write_ents), write_true_mask)
   }
-
-
-
-  /* Create an encoder and decoder (we only need one of each, they can be shared by the states) */
-  val encoder = Module(new EntanglingEncoder)
-  val decoder = Module(new EntanglingDecoder)
-
-  /* Default the encoder/decoder inputs and outputs */
-  encoder.io.req.valid := false.B
-  encoder.io.req.bits := DontCare
-  decoder.io.req := DontCare
 
 
 
@@ -613,19 +620,20 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
     /* When we are in the entangle encode state, encode the entanglings and write to memory */
     is(s_entangle_encode) {
-      /* If the read was a miss, then we don't want to entangle */
-      when(!read_hit) {
+      /* Check whether dst baddr is already entangled */
+      val already_enangled = read_ents_baddrs.zipWithIndex.map{
+        case (b, i) => b === entangle_r.dst && i.U < read_ents_len
+      }.reduce(_||_)
+
+      /* If the read was a miss or the dst is already entangled, then we don't want to entangle */
+      when(!read_hit || already_enangled) {
         state := s_ready
       } .otherwise {
-        /* Decode the entanglings. If the read was a miss, then we don't want to entangle. */
-        decoder.io.req.head := entangle_r.src
-        decoder.io.req.ents := read_ents
-
         /* Encode the entanglings */
         encoder.io.req.valid := true.B
         encoder.io.req.bits.head := entangle_r.src
-        encoder.io.req.bits.baddrs := decoder.io.resp.baddrs.prepended(entangle_r.dst)
-        encoder.io.req.bits.len := decoder.io.resp.len + 1.U
+        encoder.io.req.bits.baddrs := read_ents_baddrs.prepended(entangle_r.dst)
+        encoder.io.req.bits.len := read_ents_len + 1.U
 
         /* Move to the writeback state, but remember whether we hit or missed */
         read_hits_save := read_hits
@@ -652,24 +660,21 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
       when(!read_hit) {
         state := s_ready
       } .otherwise {
+        /* Output a prefetch request for this basic block */
         io.pref_resp.valid := true.B
         io.pref_resp.bits.head := pref_r.baddr
         io.pref_resp.bits.size := read_size
 
-        /* Decode the entanglings*/
-        decoder.io.req.head := pref_r.baddr
-        decoder.io.req.ents := read_ents
-
         /* If there are no dst entangled addresses then move to the ready state */
-        when(decoder.io.resp.len === 0.U) {
+        when(read_ents_len === 0.U) {
           state := s_ready
         } .otherwise {
           /* Save the decoder output */
-          pref_baddrs := decoder.io.resp.baddrs
-          pref_len := decoder.io.resp.len - 1.U
+          pref_baddrs := read_ents_baddrs
+          pref_len := read_ents_len - 1.U
 
           /* Initiate the first read */
-          readSize(decoder.io.resp.baddrs(decoder.io.resp.len-1.U))
+          readSize(read_ents_baddrs(read_ents_len-1.U))
 
           /* Swap to the output state */
           state := s_pref_output
