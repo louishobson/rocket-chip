@@ -169,7 +169,7 @@ class FrontendModule(outer: Frontend) extends LazyModuleImp(outer)
 
   icache.io.req.valid := s0_valid
   icache.io.req.bits.addr := io.cpu.npc
-  icache.io.req.bits.time := io.cpu.time
+  icache.io.time := io.cpu.time
   icache.io.invalidate := io.cpu.flush_icache
   icache.io.s1_paddr := tlb.io.resp.paddr
   icache.io.s2_vaddr := s2_pc
