@@ -154,27 +154,27 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
       def prefetchReq(baddr: Int) = (new EntanglingTablePrefetchReq).Lit(_.baddr -> baddr.U)
       def prefetchResp(head: Int, size: Int) = (new EntanglingTablePrefetchResp).Lit(_.head -> head.U, _.size -> size.U)
       def produce = Seq(
-        /* TEST 1: Just insert a single BB and request it as a prefetch */
+        /* TEST 1: Just insert a single BB and request it as a prefetch. Expect the head to be incremented and the size to be decremented. */
         Module(new EntanglingTableTest(0,
-          Seq(updateReq(1, 16)), Seq(), Seq(prefetchReq(1)), Seq(prefetchResp(1, 16))
+          Seq(updateReq(1, 16)), Seq(), Seq(prefetchReq(1)), Seq(prefetchResp(2, 15))
         )),
 
         /* TEST 2: Just insert a BB, update its size, and then request it as a prefetch.
          * We expect that the the maximum size seen will be returned.
          */
         Module(new EntanglingTableTest(1,
-          Seq(updateReq(1, 8), updateReq(1, 16), updateReq(1, 12)), Seq(), Seq(prefetchReq(1)), Seq(prefetchResp(1, 16))
+          Seq(updateReq(1, 8), updateReq(1, 16), updateReq(1, 12)), Seq(), Seq(prefetchReq(1)), Seq(prefetchResp(2, 15))
         )),
 
         /* TEST 3: Write multiple baddrs and request both of them */
         Module(new EntanglingTableTest(2,
-          Seq(updateReq(1, 8), updateReq(2, 16)), Seq(), Seq(prefetchReq(1), prefetchReq(2)), Seq(prefetchResp(1, 8), prefetchResp(2, 16))
+          Seq(updateReq(1, 8), updateReq(2, 16)), Seq(), Seq(prefetchReq(1), prefetchReq(2)), Seq(prefetchResp(2, 7), prefetchResp(3, 15))
         )),
 
         /* TEST 4: Fill the same way with many entries, and check that the last one prevailed */
         Module(new EntanglingTableTest(3,
           Seq.tabulate(128)(i => updateReq(i << entIdxBits, i % maxBBSize)).appended(updateReq(0, 16)), 
-          Seq(), Seq(prefetchReq(0)), Seq(prefetchResp(0, 16))
+          Seq(), Seq(prefetchReq(0)), Seq(prefetchResp(1, 15))
         )),
 
         /* TEST 5: A cache miss results in no response */
@@ -187,12 +187,12 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
           Seq(updateReq(1, 16), updateReq(2, 20), updateReq(3, 24), updateReq(4, 28)), 
           Seq(entangleReq(1, 2), entangleReq(1, 3), entangleReq(1, 4)), 
           Seq(prefetchReq(1)), 
-          Seq(prefetchResp(1, 16), prefetchResp(2, 20), prefetchResp(3, 24), prefetchResp(4, 28))
+          Seq(prefetchResp(2, 15), prefetchResp(2, 20), prefetchResp(3, 24), prefetchResp(4, 28))
         )),
 
         /* TEST 7: Creating an entangling for a non-existent source address has no effect */
         Module(new EntanglingTableTest(6,
-          Seq(), Seq(entangleReq(0, 1)), Seq(prefetchReq(0)), Seq()
+          Seq(), Seq(entangleReq(0, 16)), Seq(prefetchReq(0)), Seq()
         )),
 
         /* TEST 8: Where no entry for a dst entangled address exists, no prefetch should be issued */
@@ -200,7 +200,7 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
           Seq(updateReq(1, 16), updateReq(2, 20), updateReq(4, 28)), // Notice that no entry for baddr 3 is created 
           Seq(entangleReq(1, 2), entangleReq(1, 3), entangleReq(1, 4)),
           Seq(prefetchReq(1)), 
-          Seq(prefetchResp(1, 16), prefetchResp(2, 20), prefetchResp(4, 28)) // And we don't expect a prefetch response for baddr 3
+          Seq(prefetchResp(2, 15), prefetchResp(2, 20), prefetchResp(4, 28)) // And we don't expect a prefetch response for baddr 3
         )),
 
         /* TEST 8: Entangling a dst baddr twice will only entangle it once */
@@ -208,7 +208,15 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
           Seq(updateReq(1, 16), updateReq(2, 20)),
           Seq(entangleReq(1, 2), entangleReq(1, 2)),
           Seq(prefetchReq(1)), 
-          Seq(prefetchResp(1, 16), prefetchResp(2, 20))
+          Seq(prefetchResp(2, 15), prefetchResp(2, 20))
+        )),
+
+        /* TEST 9: Nothing will be emitted when the requested BB has size 1 */
+        Module(new EntanglingTableTest(8,
+          Seq(updateReq(1, 1)),
+          Seq(),
+          Seq(prefetchReq(1)), 
+          Seq()
         )),
       )
     }
