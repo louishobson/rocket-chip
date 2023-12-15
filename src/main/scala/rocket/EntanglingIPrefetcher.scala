@@ -36,6 +36,10 @@ case class EntanglingIPrefetcherParams(
   entPrefQueueSize: Int = 8,
   entUpdateQueueSize: Int = 4,
   entEntangleQueueSize: Int = 2,
+  /* Queue size for outputting prefetches */
+  prefetchQueueSize: Int = 8,
+  /* The number of outstanding prefetch requests */
+  nPrefetchMSHRs: Int = 4,
 )
 
 /** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams
@@ -57,6 +61,8 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def entPrefQueueSize = entanglingParams.entPrefQueueSize
   def entUpdateQueueSize = entanglingParams.entUpdateQueueSize
   def entEntangleQueueSize = entanglingParams.entEntangleQueueSize
+  def prefetchQueueSize = entanglingParams.prefetchQueueSize
+  def nPrefetchMSHRs = entanglingParams.nPrefetchMSHRs
 
   /* The block address size */
   def baddrBits = paddrBits - blockOffBits
@@ -511,7 +517,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   val read_enable = read_size_enable || read_ents_enable
 
   /* Save the read address for the next cycle */
-  val read_baddr_prev = RegNext(read_baddr)
+  val read_baddr_prev = RegEnable(read_baddr, read_enable)
 
   /* Perform the read on the tags and sizes (we need to read the size to get the tag even if only entanglings are requested) */
   val read_raw_size_tag_valid = tag_size_array.read(read_baddr(entIdxBits-1, 0), read_enable).map(Split(_, entTagBits+1, 1))
@@ -621,12 +627,12 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     /* When we are in the entangle encode state, encode the entanglings and write to memory */
     is(s_entangle_encode) {
       /* Check whether dst baddr is already entangled */
-      val already_enangled = read_ents_baddrs.zipWithIndex.map{
+      val already_entangled = read_ents_baddrs.zipWithIndex.map{
         case (b, i) => b === entangle_r.dst && i.U < read_ents_len
       }.reduce(_||_)
 
       /* If the read was a miss or the dst is already entangled, then we don't want to entangle */
-      when(!read_hit || already_enangled) {
+      when(!read_hit || already_entangled) {
         state := s_ready
       } .otherwise {
         /* Encode the entanglings */
@@ -660,10 +666,12 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
       when(!read_hit) {
         state := s_ready
       } .otherwise {
-        /* Output a prefetch request for this basic block */
-        io.pref_resp.valid := true.B
-        io.pref_resp.bits.head := pref_r.baddr
-        io.pref_resp.bits.size := read_size
+        /* Output a prefetch request for this basic block.
+         * Don't include the head itself: if that address missed then it has already been requested.
+         */
+        io.pref_resp.valid := read_size > 1.U
+        io.pref_resp.bits.head := pref_r.baddr + 1.U
+        io.pref_resp.bits.size := read_size - 1.U
 
         /* If there are no dst entangled addresses then move to the ready state */
         when(read_ents_len === 0.U) {
@@ -709,7 +717,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     *
     * @param baddr The address to search for.
     */
-  def readSize(baddr: UInt) = {
+  def readSize(baddr: UInt): Unit = {
     read_baddr := baddr
     read_size_enable := true.B
   }
@@ -718,7 +726,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     *
     * @param baddr The address to search for.
     */
-  def readSizeAndEntanglings(baddr: UInt) = {
+  def readSizeAndEntanglings(baddr: UInt): Unit = {
     read_baddr := baddr
     read_size_enable := true.B
     read_ents_enable := true.B
@@ -731,7 +739,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     * @param size Optionally, the size to write.
     * @param ents Optionally, the entangling sequence to write.
     */
-  def writeAtWay(baddr: UInt, mask: Vec[Bool], size: Option[UInt], ents: Option[Bits] = None) = {
+  def writeAtWay(baddr: UInt, mask: Vec[Bool], size: Option[UInt], ents: Option[Bits] = None): Unit = {
     write_baddr := baddr
     if(size.isDefined) {
       write_size := size.get
@@ -750,7 +758,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     * @param size The size to write.
     * @param ents The entangling sequence.
     */
-  def writeRandom(baddr: UInt, size: UInt, ents: Bits = 0.U) = {
+  def writeRandom(baddr: UInt, size: UInt, ents: Bits = 0.U): Unit = {
     write_baddr := baddr
     write_size := size
     write_ents := ents
@@ -758,6 +766,39 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     write_ents_enable := true.B
     write_repl := true.B
   }
+
+}
+
+
+
+/** [[PrefetchQueue]] takes in blocks to be prefetched and exposes them as single addresses.
+  */
+class PrefetchQueue(implicit p: Parameters) extends CoreModule with HasEntanglingIPrefetcherParameters {
+
+  /* Define the IO */
+  val io = IO(new Bundle {
+    val req = Flipped(Decoupled(new EntanglingTablePrefetchResp))
+    val resp = Valid(new EntanglingIPrefetcherPrefResp)
+  })
+
+  /* Queue the input */
+  val req_q = Queue(io.req, prefetchQueueSize)
+  req_q.ready := false.B
+
+  /* The current BB being distributed */
+  val current_req = RegInit((new EntanglingTablePrefetchResp).Lit(_.size -> 0.U))
+
+  /* Update the current BB being distributed */
+  when(current_req.size <= 1.U && req_q.valid) {
+    current_req := req_q.deq()
+  } .elsewhen (current_req.size =/= 0.U) {
+    current_req.head := current_req.head + 1.U
+    current_req.size := current_req.size - 1.U
+  }
+
+  /* Output the next address */
+  io.resp.valid := current_req.size =/= 0.U
+  io.resp.bits.paddr := current_req.head << blockOffBits
 
 }
 
@@ -782,7 +823,6 @@ class EntanglingIPrefetcherMissReq(implicit p: Parameters) extends CoreBundle wi
  */
 class EntanglingIPrefetcherPrefResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val paddr = UInt(paddrBits.W)
-  val blocks = UInt(lgMaxBBSize.W)
 }
 
 /** [[EntanglingIPrefetcher]] implements an entangling instruction prefetcher
@@ -854,10 +894,15 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   entangling_table.io.entangle_req.bits.src := history_buffer.io.search_resp.bits.head
   entangling_table.io.entangle_req.bits.dst := ShiftRegister(miss_baddr, histBufSearchLatency)
 
-  /* Pipe the prefetch requests out of the prefetcher module */
-  io.pref_resp.valid := entangling_table.io.pref_resp.valid
-  io.pref_resp.bits.paddr := entangling_table.io.pref_resp.bits.head << blockOffBits
-  io.pref_resp.bits.blocks := entangling_table.io.pref_resp.bits.size
+
+
+  /* Create the prefetch queue */
+  val prefetch_queue = Module(new PrefetchQueue)
+
+  /* Connect the prefetch queue IO to the entangling table and the final prefetch output */
+  prefetch_queue.io.req.valid := entangling_table.io.pref_resp.valid
+  prefetch_queue.io.req.bits := entangling_table.io.pref_resp.bits
+  io.pref_resp := prefetch_queue.io.resp
 
 }
 
