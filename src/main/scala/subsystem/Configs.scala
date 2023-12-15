@@ -705,6 +705,7 @@ class WithTransformedIPrefetcherParams(
     case tp: RocketTileAttachParams => tp.copy(
       tileParams = tp.tileParams.copy(
         icache = tp.tileParams.icache.map(icache => icache.copy(
+          prefetch = icache.prefetch && !create,
           entanglingParams = icache.entanglingParams.orElse(if (create) Some(new EntanglingIPrefetcherParams) else None).map(f(_))
         ))
       )
