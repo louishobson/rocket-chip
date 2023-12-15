@@ -106,6 +106,9 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val d_channel = Flipped(Decoupled(new TLBundleD(edge.bundle)))
     val resp = Decoupled(new IMSHRResp(edge))
     val ongoing_resp = Output(Bool())
+    val sending_hint = Output(Bool())
+    val hint_outstanding = Output(Bool())
+    val soft_prefetch = Input(Bool())
   })
 
   /* Define the status registers */
@@ -121,7 +124,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   val can_accept_prefetch_req = hasPrefetcher.B && io.prefetch_req.valid && !status.tail.map(_.valid).asUInt.andR
 
   /* We will accept the next demand request whenever we have space and the A TL port is ready */
-  io.demand_req.ready := !status(0).valid && io.a_channel.ready
+  io.demand_req.ready := can_accept_demand_req && io.a_channel.ready
 
   /* We will accept the next prefetch request when
    *  - The prefetcher is enabled,
@@ -130,7 +133,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
    *  - the A TL port is ready, and
    *  - a demand request isn't currently being accepted.
    */
-  io.prefetch_req.ready := can_accept_prefetch_req && io.a_channel.ready && !can_accept_demand_req
+  io.prefetch_req.ready := can_accept_prefetch_req && !can_accept_demand_req && io.a_channel.ready
 
   /* Get the next request */
   val req = Mux(io.demand_req.valid, io.demand_req.bits, io.prefetch_req.bits)
@@ -138,12 +141,12 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   /* Check if the request is already in-flight */
   val req_in_flight = status.map(s => s.valid && s.paddr === req.paddr).reduce(_||_)
 
-  /* Default the A channel outputs */
-  io.a_channel.valid := can_accept_demand_req || can_accept_prefetch_req
+  /* We only actually process the request if it isn't already in flight */
+  io.a_channel.valid := (can_accept_demand_req || can_accept_prefetch_req) && !req_in_flight
   io.a_channel.bits := DontCare
 
   /* Service a request */
-  when(io.a_channel.fire && !req_in_flight) {
+  when(io.a_channel.fire) {
 
     /* Just replace the 0th register on a demand request */
     when(io.demand_req.valid) {
@@ -171,6 +174,40 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
           printf(s"Servicing prefetch request for v:%x p:%x src:${i+1}\n", req.vaddr, req.paddr)
         }
       }
+    }
+  }
+
+  /* Remember whether we have an outstanding hint */
+  val hint_outstanding = RegInit(false.B)
+  io.hint_outstanding := hint_outstanding
+  io.sending_hint := false.B
+
+  /* Send hints when the prefetcher is not enabled */
+  if (cacheParams.prefetch && !hasPrefetcher) {
+    /* Save the previous request and whether it was actually sent */
+    val prev_req = RegNext(req)
+    val fired = RegNext(io.a_channel.fire)
+
+    /* Send a prefetch request on the next cycle */
+    when(fired && io.soft_prefetch && !hint_outstanding) {
+      /* We should never be able to accept another request here */
+      assert(!can_accept_demand_req)
+
+      /** [[crosses_page]]  indicate if there is a crosses page access
+        * [[next_block]] : the address to be prefetched.
+        */
+      val (crosses_page, next_block) = Split(prev_req.paddr(pgIdxBits-1, blockOffBits) +& 1.U, pgIdxBits-blockOffBits)
+
+      /* Send the hint */
+      io.sending_hint := !crosses_page
+      hint_outstanding := !crosses_page
+      io.a_channel.valid := !crosses_page
+      io.a_channel.bits := createHintRequest(req.paddr, next_block)
+    }
+
+    /* Unset hint_outstanding when we get the ACK */
+    when(io.d_channel.valid && !edge.hasData(io.d_channel.bits)) {
+      hint_outstanding := false.B
     }
   }
 
@@ -225,8 +262,9 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
       lgSize = lgCacheBlockBytes.U
     )._2
     bits.user.lift(AMBAProt).foreach { x =>
-      // Rocket caches all fetch requests, and it's difficult to differentiate privileged/unprivileged on
-      // cached data, so mark as privileged
+      /* Rocket caches all fetch requests, and it's difficult to differentiate privileged/unprivileged on
+       * cached data, so mark as privileged.
+       */
       x.fetch       := true.B
       x.secure      := true.B
       x.privileged  := true.B
@@ -236,7 +274,15 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
       x.writealloc  := cache
     }
     bits
-  }  
+  }
+
+  /* Make a hint request to the L" memory */
+  def createHintRequest(paddr: UInt, next_block: UInt) = edge.Hint(
+    fromSource = 1.U,
+    toAddress = Cat(paddr >> pgIdxBits, next_block) << blockOffBits,
+    lgSize = lgCacheBlockBytes.U,
+    param = TLHints.PREFETCH_READ
+  )._2
 
 }
 
@@ -523,39 +569,46 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   dontTouch(s1_hit)
   val s2_valid = RegNext(s1_valid && !io.s1_kill, false.B)
   val s2_hit = RegNext(s1_hit)
+  val s2_vaddr = RegNext(s1_vaddr)
+  val s2_paddr = RegNext(io.s1_paddr)
+
+  /* Create the MSHR */
+  val mshr = Module(new IMSHR(edge_out))
+  mshr.io.time := io.time
+  mshr.io.soft_prefetch := io.s2_prefetch
+
+  /* Connect the TL channels to the MSHR */
+  mshr.io.a_channel <> tl_out.a
+  mshr.io.d_channel <> tl_out.d
 
   /** status register to indicate a cache flush. */
   val invalidated = Reg(Bool())
-  val refill_valid = RegInit(false.B)
-  /** register to indicate [[tl_out]] is performing a hint.
-   *  prefetch only happens after refilling
-   * */
-  val send_hint = RegInit(false.B)
+  val ongoing_demand_miss = RegInit(false.B)
   /** indicate [[tl_out]] is performing a refill. */
-  val refill_fire = tl_out.a.fire && !send_hint
-  /** register to indicate there is a outstanding hint. */
-  val hint_outstanding = RegInit(false.B)
+  val refill_fire = tl_out.a.fire
   /** [[io]] access L1 I$ miss. */
   val s2_miss = s2_valid && !s2_hit && !io.s2_kill
   /** forward signal to stage 1, permit stage 1 refill. */
-  val s1_can_request_refill = !(s2_miss || refill_valid)
+  val s1_can_request_refill = !(s2_miss || ongoing_demand_miss)
   /** real refill signal, stage 2 miss, and was permit to refill in stage 1.
     * Since a miss will trigger burst.
     * miss under miss won't trigger another burst.
     */
   val s2_request_refill = s2_miss && RegNext(s1_can_request_refill)
-  val refill_paddr = RegEnable(io.s1_paddr, s1_valid && s1_can_request_refill)
-  val refill_vaddr = RegEnable(s1_vaddr, s1_valid && s1_can_request_refill)
+  val demand_miss_paddr = RegEnable(io.s1_paddr, s1_valid && s1_can_request_refill)
+  val refill_paddr = mshr.io.resp.bits.paddr // RegEnable(io.s1_paddr, s1_valid && s1_can_request_refill)
+  val refill_vaddr = mshr.io.resp.bits.vaddr // RegEnable(s1_vaddr, s1_valid && s1_can_request_refill)
   val refill_tag = refill_paddr >> pgUntagBits
   val refill_idx = index(refill_vaddr, refill_paddr)
   /** AccessAckData, is refilling I$, it will block request from CPU. */
-  val refill_one_beat = tl_out.d.fire && edge_out.hasData(tl_out.d.bits)
+  val refill_one_beat = mshr.io.resp.fire // tl_out.d.fire && edge_out.hasData(tl_out.d.bits)
 
-  val (_, _, d_done, refill_cnt) = edge_out.count(tl_out.d)
+  //val (_, _, d_done, refill_cnt) = edge_out.count(tl_out.d)
+  val refill_cnt = mshr.io.resp.bits.beat
   /** at last beat of `tl_out.d.fire`, finish refill. */
-  val refill_done = refill_one_beat && d_done
+  val refill_done = refill_one_beat && mshr.io.resp.bits.done // && d_done
   /** scratchpad is writing data. block refill. */
-  tl_out.d.ready := !s3_slaveValid
+  mshr.io.resp.ready := !s3_slaveValid
   require (edge_out.manager.minLatency > 0)
 
   /** block request from CPU when refill or scratch pad access. */
@@ -565,7 +618,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   /** way to be replaced, implemented with a hardcoded random replacement algorithm */
   val repl_way = if (isDM) 0.U else {
     // pick a way that is not used by the scratchpad
-    val v0 = LFSR(16, refill_fire)(log2Up(nWays)-1,0)
+    val v0 = LFSR(16, refill_done)(log2Up(nWays)-1,0)
     var v = v0
     for (i <- log2Ceil(nWays) - 1 to 0 by -1) {
       val mask = nWays - (BigInt(1) << (i + 1))
@@ -588,7 +641,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   /** register indicates the ongoing GetAckData transaction is corrupted. */
   val accruedRefillError = Reg(Bool())
   /** wire indicates the ongoing GetAckData transaction is corrupted. */
-  val refillError = tl_out.d.bits.corrupt || (refill_cnt > 0.U && accruedRefillError)
+  val refillError = mshr.io.resp.bits.corrupt || (mshr.io.ongoing_resp && accruedRefillError)
   when (refill_done) {
     // For AccessAckData, denied => corrupt
     /** data written to [[tag_array]].
@@ -599,7 +652,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     ccover(refillError, "D_CORRUPT", "I$ D-channel corrupt")
   }
   // notify CPU, I$ has corrupt.
-  io.errors.bus.valid := tl_out.d.fire && (tl_out.d.bits.denied || tl_out.d.bits.corrupt)
+  io.errors.bus.valid := refill_one_beat && (mshr.io.resp.bits.denied || mshr.io.resp.bits.corrupt)
   io.errors.bus.bits  := (refill_paddr >> blockOffBits) << blockOffBits
 
   /** true indicate this cacheline is valid,
@@ -746,7 +799,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     assert(!wen || !s0_ren || mem_rd_idx =/= mem_wr_idx)
     when (wen) {
       //wr_data
-      val data = Mux(s3_slaveValid, s1s3_slaveData, tl_out.d.bits.data(wordBits*(i+1)-1, wordBits*i))
+      val data = Mux(s3_slaveValid, s1s3_slaveData, mshr.io.resp.bits.data(wordBits*(i+1)-1, wordBits*i))
       //the way to be replaced/written
       val way = Mux(s3_slaveValid, scratchpadWay(s1s3_slaveAddr), repl_way)
       data_array.write(mem_wr_idx, VecInit(Seq.fill(nWays){dECC.encode(data)}), (0 until nWays).map(way === _.U))
@@ -866,7 +919,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
             val itim_allocated = !scratchpadOn && enable
             val itim_deallocated = scratchpadOn && !enable
             val itim_increase = scratchpadOn && enable && scratchpadLine(a.address) > scratchpadMax.get
-            val refilling = refill_valid && refill_cnt > 0.U
+            val refilling = mshr.io.ongoing_resp
             ccover(itim_allocated, "ITIM_ALLOCATE", "ITIM allocated")
             ccover(itim_allocated && refilling, "ITIM_ALLOCATE_WHILE_REFILL", "ITIM allocated while I$ refill")
             ccover(itim_deallocated, "ITIM_DEALLOCATE", "ITIM deallocated")
@@ -929,78 +982,34 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
       }
   }
 
-  tl_out.a.valid := s2_request_refill
-  tl_out.a.bits := edge_out.Get(
-                    fromSource = 0.U,
-                    toAddress = (refill_paddr >> blockOffBits) << blockOffBits,
-                    lgSize = lgCacheBlockBytes.U)._2
+  /* Connect the MSHR demand IO */
+  mshr.io.demand_req.valid := s2_request_refill
+  mshr.io.demand_req.bits.vaddr := s2_vaddr
+  mshr.io.demand_req.bits.paddr := s2_paddr
+  mshr.io.demand_req.bits.cache := io.s2_cacheable
 
-  // prefetch when next-line access does not cross a page
-  if (cacheParams.prefetch) {
-    /** [[crosses_page]]  indicate if there is a crosses page access
-      * [[next_block]] : the address to be prefetched.
-      */
-    val (crosses_page, next_block) = Split(refill_paddr(pgIdxBits-1, blockOffBits) +& 1.U, pgIdxBits-blockOffBits)
-
-    when (tl_out.a.fire) {
-      send_hint := !hint_outstanding && io.s2_prefetch && !crosses_page
-      when (send_hint) {
-        send_hint := false.B
-        hint_outstanding := true.B
-      }
-    }
-
-    // @todo why refill_done will kill hint at this cycle?
-    when (refill_done) {
-      send_hint := false.B
-    }
-
-    // D channel reply with HintAck.
-    when (tl_out.d.fire && !refill_one_beat) {
-      hint_outstanding := false.B
-    }
-
-    when (send_hint) {
-      tl_out.a.valid := true.B
-      tl_out.a.bits := edge_out.Hint(
-                        fromSource = 1.U,
-                        toAddress = Cat(refill_paddr >> pgIdxBits, next_block) << blockOffBits,
-                        lgSize = lgCacheBlockBytes.U,
-                        param = TLHints.PREFETCH_READ)._2
-    }
-
-    ccover(send_hint && !tl_out.a.ready, "PREFETCH_A_STALL", "I$ prefetch blocked by A-channel")
-    ccover(refill_valid && (tl_out.d.fire && !refill_one_beat), "PREFETCH_D_BEFORE_MISS_D", "I$ prefetch resolves before miss")
-    ccover(!refill_valid && (tl_out.d.fire && !refill_one_beat), "PREFETCH_D_AFTER_MISS_D", "I$ prefetch resolves after miss")
-    ccover(tl_out.a.fire && hint_outstanding, "PREFETCH_D_AFTER_MISS_A", "I$ prefetch resolves after second miss")
+  if(cacheParams.prefetch) {
+    ccover(mshr.io.sending_hint && !tl_out.a.ready, "PREFETCH_A_STALL", "I$ prefetch blocked by A-channel")
+    ccover(ongoing_demand_miss && (tl_out.d.fire && !refill_one_beat), "PREFETCH_D_BEFORE_MISS_D", "I$ prefetch resolves before miss")
+    ccover(!ongoing_demand_miss && (tl_out.d.fire && !refill_one_beat), "PREFETCH_D_AFTER_MISS_D", "I$ prefetch resolves after miss")
+    ccover(tl_out.a.fire && mshr.io.hint_outstanding, "PREFETCH_D_AFTER_MISS_A", "I$ prefetch resolves after second miss")
   }
-  // Drive APROT information
-  tl_out.a.bits.user.lift(AMBAProt).foreach { x =>
-    // Rocket caches all fetch requests, and it's difficult to differentiate privileged/unprivileged on
-    // cached data, so mark as privileged
-    x.fetch       := true.B
-    x.secure      := true.B
-    x.privileged  := true.B
-    x.bufferable  := true.B
-    x.modifiable  := true.B
-    x.readalloc   := io.s2_cacheable
-    x.writealloc  := io.s2_cacheable
-  }
+
   tl_out.b.ready := true.B
   tl_out.c.valid := false.B
   tl_out.e.valid := false.B
   assert(!(tl_out.a.valid && addrMaybeInScratchpad(tl_out.a.bits.address)))
 
   // if there is an outstanding refill, cannot flush I$.
-  when (!refill_valid) { invalidated := false.B }
-  when (refill_fire) { refill_valid := true.B }
-  when (refill_done) { refill_valid := false.B}
+  when (!mshr.io.ongoing_resp) { invalidated := false.B }
+  when (mshr.io.demand_req.fire) { ongoing_demand_miss := true.B }
+  when (refill_done && refill_paddr === demand_miss_paddr) { ongoing_demand_miss := false.B }
 
   io.perf.acquire := refill_fire
   // don't gate I$ clock since there are outstanding transcations.
   io.keep_clock_enabled :=
     tl_in.map(tl => tl.a.valid || tl.d.valid || s1_slaveValid || s2_slaveValid || s3_slaveValid).getOrElse(false.B) || // ITIM
-    s1_valid || s2_valid || refill_valid || send_hint || hint_outstanding // I$
+    s1_valid || s2_valid || ongoing_demand_miss || mshr.io.sending_hint || mshr.io.hint_outstanding // I$
 
   /** the entangling prefetcher module */
   if(cacheParams.entanglingParams.isDefined) {
@@ -1012,6 +1021,9 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     prefetcher.io.miss_req.bits.start := io.time
     prefetcher.io.miss_req.bits.end := io.time
     prefetcher.io.miss_req.valid := true.B
+  } else {
+    mshr.io.prefetch_req.valid := false.B
+    mshr.io.prefetch_req.bits := DontCare
   }
 
   /** index to access [[data_arrays]] and [[tag_array]].
@@ -1040,8 +1052,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     msbs ## lsbs
   }
 
-  ccover(!send_hint && (tl_out.a.valid && !tl_out.a.ready), "MISS_A_STALL", "I$ miss blocked by A-channel")
-  ccover(invalidate && refill_valid, "FLUSH_DURING_MISS", "I$ flushed during miss")
+  ccover(!mshr.io.sending_hint && (tl_out.a.valid && !tl_out.a.ready), "MISS_A_STALL", "I$ miss blocked by A-channel")
+  ccover(invalidate && ongoing_demand_miss, "FLUSH_DURING_MISS", "I$ flushed during miss")
 
   def ccover(cond: Bool, label: String, desc: String)(implicit sourceInfo: SourceInfo) =
     property.cover(cond, s"ICACHE_$label", "MemorySystem;;" + desc)
