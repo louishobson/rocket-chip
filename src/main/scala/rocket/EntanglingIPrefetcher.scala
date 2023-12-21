@@ -26,7 +26,7 @@ case class EntanglingIPrefetcherParams(
   /* The maximum forward-jumping gap in baddrs that should still be considered the same basic block */
   maxBBGapSize: Int = 2, 
   /* The length of the history buffer */
-  histBufLen: Int = 8,
+  histBufLen: Int = 16,
   /* The number of elements of the history buffer to search in one combinatorial path */
   histBufSearchFragLen: Int = 4,
   /* The ways and sets of the entangling table */
@@ -39,7 +39,7 @@ case class EntanglingIPrefetcherParams(
   /* Queue size for outputting prefetches */
   prefetchQueueSize: Int = 8,
   /* The number of outstanding prefetch requests */
-  nPrefetchMSHRs: Int = 4,
+  nPrefetchMSHRs: Int = 2,
 )
 
 /** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams
@@ -66,6 +66,15 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
 
   /* The block address size */
   def baddrBits = paddrBits - blockOffBits
+
+  /* We may need to store some bits to re-create the virtual address enough to produce the I$ index.
+   *   |--------|--pgIdxBits--|
+   *           blockOffBits ¬
+   *   |----|---idxBits---|---|
+   * vidxBits ¬
+   *   |----|---|-------------|
+   */
+  def vidxBits = 0.max(blockOffBits + idxBits - pgIdxBits)
 
   /* Configuration for the entangling table */
   require(isPow2(nWays), "entanglingNSets must be a power of 2")
@@ -226,6 +235,7 @@ class EntanglingDecoder(implicit p: Parameters) extends CoreModule with HasEntan
   */ 
 class BBCounterReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val baddr = UInt(baddrBits.W)
+  val vidx = UInt(vidxBits.W)
   val time = UInt(timeBits.W)
 }
 
@@ -233,6 +243,7 @@ class BBCounterReq(implicit p: Parameters) extends CoreBundle with HasEntangling
   */
 class BBCounterResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val head = UInt(baddrBits.W)
+  val vidx = UInt(vidxBits.W)
   val size = UInt(lgMaxBBSize.W)
   val time = UInt(timeBits.W)
   val done = Bool()
@@ -249,33 +260,36 @@ class BBCounter(implicit p: Parameters) extends CoreModule with HasEntanglingIPr
   })
 
   /* Initialize the BB head, size and timestamp registers */
-  val bb_head = RegInit(0.U(baddrBits.W))
+  val bb_head = Reg(UInt(baddrBits.W))
+  val bb_vidx = Reg(UInt(vidxBits.W))
   val bb_size = RegInit(0.U(lgMaxBBSize.W))
-  val bb_time = RegInit(0.U(timeBits.W))
-
+  val bb_time = Reg(UInt(timeBits.W))
+  
   /* Calculate the change in io.req.bits.baddr compared to the current head.
    * We need to be quite careful regarding overflow while performing these calculations.
-   * bb_cont indicates that we are within the same BB (true if baddr is not valid).
-   * bb_grow indicates that we have just extended the BB size (false if baddr is not valid).
+   * cont indicates that we are within the same BB (true if baddr is not valid).
+   * grow indicates that we have just extended the BB size (false if baddr is not valid).
    */
   val req_bdiff = io.req.bits.baddr - bb_head
-  val bb_cont = !io.req.valid || (io.req.bits.baddr >= bb_head && req_bdiff <= bb_size +& maxBBGapSize.U && req_bdiff < maxBBSize.U)
-  val bb_grow = io.req.valid && bb_cont && req_bdiff >= bb_size
+  val cont = !io.req.valid || (io.req.bits.baddr >= bb_head && req_bdiff <= bb_size +& maxBBGapSize.U && req_bdiff < maxBBSize.U && io.req.bits.vidx === bb_vidx)
+  val grow = io.req.valid && cont && req_bdiff >= bb_size
 
   /* Update the registers */
-  when(!bb_cont || bb_size === 0.U) { 
-    bb_head := io.req.bits.baddr 
+  when(!cont || (bb_size === 0.U && io.req.valid)) {
+    bb_head := io.req.bits.baddr
+    bb_vidx := io.req.bits.vidx
     bb_time := io.req.bits.time 
     bb_size := 1.U
-  } .elsewhen(bb_grow) { 
+  } .elsewhen(grow) {
     bb_size := req_bdiff + 1.U
   }
 
   /* Potentially output a completed significant BB. This is when a basic block reaches a size of sigBBSize.
    * This can stop tiny basic blocks from filling the entangling table.
    */
-  io.resp.done := !bb_cont && bb_size >= sigBBSize.U
+  io.resp.done := !cont && bb_size >= sigBBSize.U
   io.resp.head := bb_head
+  io.resp.vidx := bb_vidx
   io.resp.size := bb_size
   io.resp.time := bb_time
 
@@ -400,6 +414,7 @@ class EntanglingTablePrefetchReq(implicit p: Parameters) extends CoreBundle with
   */ 
 class EntanglingTablePrefetchResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val head = UInt(baddrBits.W)
+  val vidx = UInt(vidxBits.W)
   val size = UInt(lgMaxBBSize.W)
 }
 
@@ -407,6 +422,7 @@ class EntanglingTablePrefetchResp(implicit p: Parameters) extends CoreBundle wit
   */ 
 class EntanglingTableUpdateReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val head = UInt(baddrBits.W)
+  val vidx = UInt(vidxBits.W)
   val size = UInt(lgMaxBBSize.W)
 }
 
@@ -497,7 +513,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     name = "tag_and_size_array",
     desc = "Entangling Prefetcher Tag and Size Array",
     size = entNSets,
-    data = Vec(entNWays, Bits((lgMaxBBSize+entTagBits+1).W))
+    data = Vec(entNWays, Bits((lgMaxBBSize+vidxBits+entTagBits+1).W))
   )
 
   /* Define the entangling SRAM */
@@ -520,18 +536,19 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   val read_baddr_prev = RegEnable(read_baddr, read_enable)
 
   /* Perform the read on the tags and sizes (we need to read the size to get the tag even if only entanglings are requested) */
-  val read_raw_size_tag_valid = tag_size_array.read(read_baddr(entIdxBits-1, 0), read_enable).map(Split(_, entTagBits+1, 1))
+  val read_raw_size_vidx_tag_valid = tag_size_array.read(read_baddr(entIdxBits-1, 0), read_enable).map(Split(_, vidxBits+entTagBits+1, entTagBits+1, 1))
 
   /* Perform the read on entanglings */
   val read_raw_ents = entangling_array.read(read_baddr(entIdxBits-1, 0), read_ents_enable)
 
   /* Check the tags and validity bits, asserting that we have a maximum of one hit */
-  val read_hits = VecInit(read_raw_size_tag_valid.map(b => b._3(0) && b._2 === read_baddr_prev >> entIdxBits))
+  val read_hits = VecInit(read_raw_size_vidx_tag_valid.map(b => b._4(0) && b._3 === read_baddr_prev >> entIdxBits))
   val read_hit = read_hits.reduce(_||_)
   assert(!read_enable || PopCount(read_hits) <= 1.U)
 
   /* Get the read size */
-  val read_size = Mux1H(read_hits, read_raw_size_tag_valid.map(_._1))
+  val read_size = Mux1H(read_hits, read_raw_size_vidx_tag_valid.map(_._1))
+  val read_vidx = Mux1H(read_hits, read_raw_size_vidx_tag_valid.map(_._2))
   val read_ents = Mux1H(read_hits, read_raw_ents)
 
   /* Decode the entanglings */
@@ -545,6 +562,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   /* Create wires that are always connected to the memory write port */
   val write_baddr = WireDefault(UInt(baddrBits.W), DontCare)
   val write_size = WireDefault(UInt(lgMaxBBSize.W), DontCare)
+  val write_vidx = WireDefault(UInt(vidxBits.W), DontCare)
   val write_ents = WireDefault(UInt(63.W), DontCare)
   val write_size_enable = WireDefault(false.B)
   val write_ents_enable = WireDefault(false.B)
@@ -553,7 +571,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   val write_repl = WireDefault(false.B)
 
   /* Bundle the inputs */
-  val write_raw_size_tag_valid = write_size ## (write_baddr >> entIdxBits) ## true.B
+  val write_raw_size_vidx_tag_valid = write_size ## write_vidx ## (write_baddr >> entIdxBits) ## true.B
 
   /* If write_repl is true, then we need to perform random replacement */
   val write_random_way = LFSR(8, write_repl && write_enable)(log2Up(entNWays)-1, 0)
@@ -568,7 +586,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
   /* Perform the write on the tag and size (if write_size_enable is true) */
   when(write_size_enable) {
-    tag_size_array.write(write_baddr(entIdxBits-1, 0), Seq.fill(entNWays)(write_raw_size_tag_valid), write_true_mask)
+    tag_size_array.write(write_baddr(entIdxBits-1, 0), Seq.fill(entNWays)(write_raw_size_vidx_tag_valid), write_true_mask)
   }
 
   /* Perform the write on the entanglings (if write_ents_enable is true) */
@@ -613,9 +631,9 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     is(s_update_writeback) {
       /* Update/insert the new size */
       when(!read_hit) {
-        writeRandom(update_r.head, update_r.size)
-      } .elsewhen(update_r.size > read_size) {
-        writeAtWay(update_r.head, read_hits, Some(update_r.size))
+        writeRandom(update_r.head, update_r.size, update_r.vidx)
+      } .elsewhen(update_r.size > read_size || read_vidx =/= update_r.vidx) {
+        writeAtWay(update_r.head, read_hits, Some((update_r.size, update_r.vidx)))
       }
 
       /* Move into the ready state */
@@ -671,6 +689,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
          */
         io.pref_resp.valid := read_size > 1.U
         io.pref_resp.bits.head := pref_r.baddr + 1.U
+        io.pref_resp.bits.vidx := read_vidx
         io.pref_resp.bits.size := read_size - 1.U
 
         /* If there are no dst entangled addresses then move to the ready state */
@@ -696,6 +715,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
       when(read_hit) {
         io.pref_resp.valid := true.B
         io.pref_resp.bits.head := pref_baddrs(pref_len)
+        io.pref_resp.bits.vidx := read_vidx
         io.pref_resp.bits.size := read_size
       }
 
@@ -736,13 +756,14 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     *
     * @param baddr The address to write to.
     * @param mask The one-hot mask.
-    * @param size Optionally, the size to write.
+    * @param size_vidx Optionally, the size and vidx to write.
     * @param ents Optionally, the entangling sequence to write.
     */
-  def writeAtWay(baddr: UInt, mask: Vec[Bool], size: Option[UInt], ents: Option[Bits] = None): Unit = {
+  def writeAtWay(baddr: UInt, mask: Vec[Bool], size_vidx: Option[(UInt, UInt)], ents: Option[Bits] = None): Unit = {
     write_baddr := baddr
-    if(size.isDefined) {
-      write_size := size.get
+    if(size_vidx.isDefined) {
+      write_size := size_vidx.get._1
+      write_vidx := size_vidx.get._2
       write_size_enable := true.B
     } 
     if(ents.isDefined) {
@@ -758,9 +779,10 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     * @param size The size to write.
     * @param ents The entangling sequence.
     */
-  def writeRandom(baddr: UInt, size: UInt, ents: Bits = 0.U): Unit = {
+  def writeRandom(baddr: UInt, size: UInt, vidx: UInt, ents: Bits = 0.U): Unit = {
     write_baddr := baddr
     write_size := size
+    write_vidx := vidx
     write_ents := ents
     write_size_enable := true.B
     write_ents_enable := true.B
@@ -778,20 +800,19 @@ class PrefetchQueue(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Define the IO */
   val io = IO(new Bundle {
     val req = Flipped(Decoupled(new EntanglingTablePrefetchResp))
-    val resp = Valid(new EntanglingIPrefetcherPrefResp)
+    val resp = Decoupled(new EntanglingIPrefetcherPrefResp)
   })
 
   /* Queue the input */
   val req_q = Queue(io.req, prefetchQueueSize)
-  req_q.ready := false.B
 
   /* The current BB being distributed */
   val current_req = RegInit((new EntanglingTablePrefetchResp).Lit(_.size -> 0.U))
 
   /* Update the current BB being distributed */
-  when(current_req.size <= 1.U && req_q.valid) {
+  when(req_q.valid && ((io.resp.fire() && current_req.size === 1.U) || current_req.size === 0.U)) {
     current_req := req_q.deq()
-  } .elsewhen (current_req.size =/= 0.U) {
+  } .elsewhen (io.resp.fire() && current_req.size =/= 0.U) {
     current_req.head := current_req.head + 1.U
     current_req.size := current_req.size - 1.U
   }
@@ -799,6 +820,8 @@ class PrefetchQueue(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Output the next address */
   io.resp.valid := current_req.size =/= 0.U
   io.resp.bits.paddr := current_req.head << blockOffBits
+  io.resp.bits.index := current_req.vidx ## (current_req.head)(((pgIdxBits-blockOffBits) min idxBits)-1,0)
+  req_q.ready := io.resp.ready
 
 }
 
@@ -808,21 +831,20 @@ class PrefetchQueue(implicit p: Parameters) extends CoreModule with HasEntanglin
   */ 
 class EntanglingIPrefetcherFetchReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val paddr = UInt(paddrBits.W)
-  val time = UInt(timeBits.W)
+  val index = UInt(idxBits.W)
 }
 
 /** [[EntanglingIPrefetcherMissReq]] defines the interface for notifying the prefetcher of a cache miss.
  */
 class EntanglingIPrefetcherMissReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val paddr = UInt(paddrBits.W)
-  val start = UInt(timeBits.W)
-  val end = UInt(timeBits.W)
 }
 
 /** [[EntanglingIPrefetcherPrefResp]] defines the interface for responding with prefetches.
  */
 class EntanglingIPrefetcherPrefResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val paddr = UInt(paddrBits.W)
+  val index = UInt(idxBits.W)
 }
 
 /** [[EntanglingIPrefetcher]] implements an entangling instruction prefetcher
@@ -841,7 +863,8 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   val io = IO(new Bundle {
     val fetch_req = Flipped(Valid(new EntanglingIPrefetcherFetchReq))
     val miss_req = Flipped(Valid(new EntanglingIPrefetcherMissReq))
-    val pref_resp = Valid(new EntanglingIPrefetcherPrefResp)
+    val pref_resp = Decoupled(new EntanglingIPrefetcherPrefResp)
+    val time = Input(UInt(timeBits.W))
   })
 
 
@@ -851,9 +874,11 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
 
   /* Connect its input IO */
   val fetch_baddr = io.fetch_req.bits.paddr >> blockOffBits
+  val fetch_vidx = if (vidxBits == 0) DontCare else io.fetch_req.bits.index >> (pgUntagBits-blockOffBits)
   bb_counter.io.req.valid := io.fetch_req.valid
   bb_counter.io.req.bits.baddr := fetch_baddr
-  bb_counter.io.req.bits.time := io.fetch_req.bits.time
+  bb_counter.io.req.bits.vidx := fetch_vidx
+  bb_counter.io.req.bits.time := io.time
 
 
 
@@ -871,7 +896,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
    */
   val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
   history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
-  history_buffer.io.search_req.bits.target_time := io.miss_req.bits.start - (io.miss_req.bits.end - io.miss_req.bits.start)
+  history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (io.time - bb_counter.io.resp.time)
 
 
 
@@ -887,6 +912,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   /* Link up the new BB IO */
   entangling_table.io.update_req.valid := bb_counter.io.resp.done
   entangling_table.io.update_req.bits.head := bb_counter.io.resp.head
+  entangling_table.io.update_req.bits.vidx := bb_counter.io.resp.vidx
   entangling_table.io.update_req.bits.size := bb_counter.io.resp.size
 
   /* Link up the entangling creation IO */
@@ -902,7 +928,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   /* Connect the prefetch queue IO to the entangling table and the final prefetch output */
   prefetch_queue.io.req.valid := entangling_table.io.pref_resp.valid
   prefetch_queue.io.req.bits := entangling_table.io.pref_resp.bits
-  io.pref_resp := prefetch_queue.io.resp
+  io.pref_resp <> prefetch_queue.io.resp
 
 }
 
