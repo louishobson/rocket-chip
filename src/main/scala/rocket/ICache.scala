@@ -77,16 +77,14 @@ class ICacheErrors(implicit p: Parameters) extends CoreBundle()(p)
 
 
 class IMSHRReq(implicit p: Parameters) extends CoreBundle with HasL1ICacheParameters {
-  val vaddr = UInt(vaddrBits.W)
+  val index = UInt(idxBits.W)
   val paddr = UInt(paddrBits.W)
   val cache = Bool()
 }
 
 class IMSHRResp(ep: TLEdgeParameters)(implicit p: Parameters) extends CoreBundle with HasL1ICacheParameters {
-  val vaddr = UInt(vaddrBits.W)
+  val index = UInt(idxBits.W)
   val paddr = UInt(paddrBits.W)
-  val start = UInt(64.W)
-  val end = UInt(64.W)
   val beat = UInt(log2Up(ep.maxTransfer / ep.manager.beatBytes).W)
   val done = Bool()
   val demand = Bool()
@@ -99,7 +97,6 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
 
   /* Define the IO */
   val io = IO(new Bundle {
-    val time = Input(UInt(64.W))
     val demand_req = Flipped(Decoupled(new IMSHRReq))
     val prefetch_req = Flipped(Decoupled(new IMSHRReq))
     val a_channel = Decoupled(new TLBundleA(edge.bundle))
@@ -111,11 +108,13 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val soft_prefetch = Input(Bool())
   })
 
+  /* We are ready for a response when it either had no data, or the I$ is ready */
+  io.d_channel.ready := !edge.hasData(io.d_channel.bits) || io.resp.ready
+
   /* Define the status registers */
   val status = RegInit(VecInit(Seq.fill(nPrefetchMSHRs+1)((new Bundle {
-    val vaddr = UInt(vaddrBits.W)
+    val index = UInt(idxBits.W)
     val paddr = UInt(paddrBits.W)
-    val time = UInt(64.W)
     val valid = Bool()
   }).Lit(_.valid -> false.B))))
 
@@ -136,42 +135,45 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   io.prefetch_req.ready := can_accept_prefetch_req && !can_accept_demand_req && io.a_channel.ready
 
   /* Get the next request */
-  val req = Mux(io.demand_req.valid, io.demand_req.bits, io.prefetch_req.bits)
+  val req = Mux(can_accept_demand_req, io.demand_req.bits, io.prefetch_req.bits)
+  assert(req.paddr(blockOffBits-1,0) === 0.U)
 
-  /* Check if the request is already in-flight */
+  /* Check if the request is already in flight */
   val req_in_flight = status.map(s => s.valid && s.paddr === req.paddr).reduce(_||_)
 
-  /* We only actually process the request if it isn't already in flight */
-  io.a_channel.valid := (can_accept_demand_req || can_accept_prefetch_req) && !req_in_flight
+  /* Default the channel */
+  io.a_channel.valid := io.sending_hint || ((can_accept_demand_req || can_accept_prefetch_req) && !req_in_flight)
   io.a_channel.bits := DontCare
 
-  /* Service a request */
-  when(io.a_channel.fire) {
+  /* Set the bits of the A channel */
+  when(io.a_channel.valid && !io.sending_hint) {
 
     /* Just replace the 0th register on a demand request */
-    when(io.demand_req.valid) {
+    when(can_accept_demand_req) {
       /* Make the request and save in the register */
       io.a_channel.bits := createGetRequest(req.paddr, req.cache, 0)
-      status(0).vaddr := req.vaddr
-      status(0).paddr := req.paddr
-      status(0).time := io.time
-      status(0).valid := true.B
-      printf("Servicing demand request for v:%x p:%x\n", req.vaddr, req.paddr)
+      when(io.a_channel.ready) {
+        status(0).index := req.index
+        status(0).paddr := req.paddr
+        status(0).valid := true.B
+      }
+      printf("Servicing demand request for idx:%d p:%x\n", req.index, req.paddr)
     } 
     
     /* On a prefetch request, we need to choose where to insert the request */
     .otherwise {
       /* Iterate over the possibility of inserting into each register */
       for(i <- 0 until nPrefetchMSHRs) {
-        val mask = Fill(nPrefetchMSHRs-i, 0.U) ## Fill(i, 1.U)
-        val vs = status.tail.map(_.valid).asUInt
-        when(vs(i) && (mask & vs) === 0.U) {
+        val mask = (0 until nPrefetchMSHRs).map(_ < i).map(_.B).asUInt
+        val free = status.tail.map(!_.valid).asUInt
+        when(free(i) && (mask & free) === 0.U) {
           io.a_channel.bits := createGetRequest(req.paddr, req.cache, i+1)
-          status(i+1).vaddr := req.vaddr
-          status(i+1).paddr := req.paddr
-          status(i+1).time := io.time
-          status(i+1).valid := true.B
-          printf(s"Servicing prefetch request for v:%x p:%x src:${i+1}\n", req.vaddr, req.paddr)
+          when(io.a_channel.fire) {
+            status(i+1).index := req.index
+            status(i+1).paddr := req.paddr
+            status(i+1).valid := true.B
+          }
+          printf(s"Servicing prefetch request for idx:%d p:%x src:${i+1}\n", req.index, req.paddr)
         }
       }
     }
@@ -186,10 +188,10 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   if (cacheParams.prefetch && !hasPrefetcher) {
     /* Save the previous request and whether it was actually sent */
     val prev_req = RegNext(req)
-    val fired = RegNext(io.a_channel.fire)
+    val a_fired = RegNext(io.a_channel.fire)
 
     /* Send a prefetch request on the next cycle */
-    when(fired && io.soft_prefetch && !hint_outstanding) {
+    when(a_fired && io.soft_prefetch && !hint_outstanding) {
       /* We should never be able to accept another request here */
       assert(!can_accept_demand_req)
 
@@ -199,9 +201,8 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
       val (crosses_page, next_block) = Split(prev_req.paddr(pgIdxBits-1, blockOffBits) +& 1.U, pgIdxBits-blockOffBits)
 
       /* Send the hint */
-      io.sending_hint := !crosses_page
-      hint_outstanding := !crosses_page
-      io.a_channel.valid := !crosses_page
+      io.sending_hint := crosses_page === next_block
+      hint_outstanding := io.sending_hint
       io.a_channel.bits := createHintRequest(req.paddr, next_block)
     }
 
@@ -216,35 +217,30 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   val (_, _, response_done, response_beat) = edge.count(io.d_channel)
   val response_source = io.d_channel.bits.source
   val response_status = status(response_source)
-  when(response_valid) {
-    printf("Responding to demand request for v:%x p:%x beat:%d done:[%d]\n", response_status.vaddr, response_status.paddr, response_beat, response_done)
-  }
   assert(!response_valid || response_status.valid)
-  io.d_channel.ready := response_valid && io.resp.ready
   io.resp.valid := response_valid
   io.resp.bits.done := response_done
   io.resp.bits.beat := response_beat
-  io.resp.bits.vaddr := response_status.vaddr
+  io.resp.bits.index := response_status.index
   io.resp.bits.paddr := response_status.paddr
-  io.resp.bits.start := response_status.time
-  io.resp.bits.end := io.time
   io.resp.bits.demand := response_source === 0.U
   io.resp.bits.denied := io.d_channel.bits.denied
   io.resp.bits.corrupt := io.d_channel.bits.corrupt
   io.resp.bits.data := io.d_channel.bits.data
 
-  /* When a burst is done, there is no longer an ongoing sponse */
+  /* When a burst is done, there is no longer an ongoing response */
+  val response_fire = io.resp.fire
   val ongoing_resp = RegInit(false.B)
   io.ongoing_resp := ongoing_resp
-  when(response_valid && response_done) {
+  when(response_fire && response_done) {
     ongoing_resp := false.B
+    response_status.valid := false.B
   } .elsewhen (response_valid) {
     ongoing_resp := true.B
   }
 
-  /* Invalidate the MSHR entry if it is now done */
-  when(response_valid && response_done) {
-    response_status.valid := false.B
+  when(response_fire) {
+    printf("Responding to request for src:%d idx:%d p:%x beat:%d done:[%d]\n", response_source, response_status.index, response_status.paddr, response_beat, response_done)
   }
 
   /* Get information about the prefetcher */
@@ -254,11 +250,10 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
 
   /* Make a Access request to the L2 memory */
   def createGetRequest(paddr: UInt, cache: Bool, source: Int): TLBundleA = {
-    /* Drive APROT information */
     val bits = Wire(new TLBundleA(edge.bundle)) 
     bits := edge.Get(
-      fromSource = source.U,
-      toAddress = (paddr >> blockOffBits) << blockOffBits,
+      fromSource = source.U, 
+      toAddress = paddr,
       lgSize = lgCacheBlockBytes.U
     )._2
     bits.user.lift(AMBAProt).foreach { x =>
@@ -359,7 +354,7 @@ class ICache(val icacheParams: ICacheParams, val staticIdForMetadataUseOnly: Int
     */
   val masterNode = TLClientNode(Seq(TLMasterPortParameters.v1(
     clients = Seq(TLMasterParameters.v1(
-      sourceId = IdRange(0, 1 + icacheParams.prefetch.toInt), // 0=refill, 1=hint
+      sourceId = IdRange(0, 1 + icacheParams.entanglingParams.map(e => e.nPrefetchMSHRs).getOrElse(icacheParams.prefetch.toInt)), // 0=refill, 1=hint
       name = s"Core ${staticIdForMetadataUseOnly} ICache")),
     requestFields = useVM.option(Seq()).getOrElse(Seq(AMBAProtField())))))
 
@@ -545,7 +540,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   val s0_vaddr = io.req.bits.addr
 
   /** valid signal for stage 1, drived by s0_valid.*/
-  val s1_valid = RegInit(false.B)
+  val s1_valid = RegNext(s0_valid, false.B)
   /** virtual address from CPU in stage 1. */
   val s1_vaddr = RegEnable(s0_vaddr, s0_valid)
   /** tag hit vector to indicate hit which way. */
@@ -572,9 +567,14 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   val s2_vaddr = RegNext(s1_vaddr)
   val s2_paddr = RegNext(io.s1_paddr)
 
+  when(s1_valid) {
+    printf("[%d] REQ: v:%x p:%x (idx:%d)\n", io.time, s1_vaddr, io.s1_paddr, s1_vaddr(untagBits-1, blockOffBits))
+  } .otherwise {
+    printf("[%d] REQ: NONE\n", io.time)
+  }
+
   /* Create the MSHR */
   val mshr = Module(new IMSHR(edge_out))
-  mshr.io.time := io.time
   mshr.io.soft_prefetch := io.s2_prefetch
 
   /* Connect the TL channels to the MSHR */
@@ -595,11 +595,11 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     * miss under miss won't trigger another burst.
     */
   val s2_request_refill = s2_miss && RegNext(s1_can_request_refill)
-  val demand_miss_paddr = RegEnable(io.s1_paddr, s1_valid && s1_can_request_refill)
+  val demand_miss_paddr = RegEnable((io.s1_paddr >> blockOffBits) << blockOffBits, s1_valid && s1_can_request_refill)
+  val demand_miss_index = RegEnable(s1_vaddr(untagBits-1,blockOffBits), s1_valid && s1_can_request_refill)
   val refill_paddr = mshr.io.resp.bits.paddr // RegEnable(io.s1_paddr, s1_valid && s1_can_request_refill)
-  val refill_vaddr = mshr.io.resp.bits.vaddr // RegEnable(s1_vaddr, s1_valid && s1_can_request_refill)
   val refill_tag = refill_paddr >> pgUntagBits
-  val refill_idx = index(refill_vaddr, refill_paddr)
+  val refill_idx = mshr.io.resp.bits.index
   /** AccessAckData, is refilling I$, it will block request from CPU. */
   val refill_one_beat = mshr.io.resp.fire // tl_out.d.fire && edge_out.hasData(tl_out.d.bits)
 
@@ -607,13 +607,18 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   val refill_cnt = mshr.io.resp.bits.beat
   /** at last beat of `tl_out.d.fire`, finish refill. */
   val refill_done = refill_one_beat && mshr.io.resp.bits.done // && d_done
+
+  /* Stop requests when a prefetch is firing */
+  val prefetch_fire = WireDefault(false.B)
+  val prefetch_index = WireDefault(UInt(idxBits.W), DontCare)
+  val prefetch_tag = WireDefault(UInt(tagBits.W), DontCare)
+
   /** scratchpad is writing data. block refill. */
   mshr.io.resp.ready := !s3_slaveValid
   require (edge_out.manager.minLatency > 0)
 
   /** block request from CPU when refill or scratch pad access. */
-  io.req.ready := !(refill_done || s0_slaveValid || s3_slaveValid) && (!refill_one_beat || index(refill_vaddr, refill_paddr) =/= io.req.bits.addr(untagBits-1,blockOffBits))
-  s1_valid := s0_valid
+  io.req.ready := !(s0_slaveValid || s3_slaveValid) && (!refill_one_beat || refill_idx =/= s0_vaddr(untagBits-1,blockOffBits)) && !(ongoing_demand_miss && s0_vaddr(untagBits-1,blockOffBits) === demand_miss_index)
 
   /** way to be replaced, implemented with a hardcoded random replacement algorithm */
   val repl_way = if (isDM) 0.U else {
@@ -637,7 +642,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     size = nSets,
     data = Vec(nWays, UInt(tECC.width(1 + tagBits).W))
   )
-  val tag_rdata = tag_array.read(s0_vaddr(untagBits-1,blockOffBits), !refill_done && s0_valid)
+  val tag_rdata = tag_array.read(Mux(prefetch_fire, prefetch_index, s0_vaddr(untagBits-1,blockOffBits)), s0_valid || prefetch_fire)
   /** register indicates the ongoing GetAckData transaction is corrupted. */
   val accruedRefillError = Reg(Bool())
   /** wire indicates the ongoing GetAckData transaction is corrupted. */
@@ -706,8 +711,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   // Here we check the tag.
   // tag_rdata is the vector of tags for this set.
   for (i <- 0 until nWays) {
-    val s1_idx = index(s1_vaddr, io.s1_paddr)
-    val s1_tag = io.s1_paddr >> pgUntagBits
+    val s1_idx = Mux(s1_valid, index(s1_vaddr, io.s1_paddr), RegEnable(prefetch_index, prefetch_fire))
+    val s1_tag = Mux(s1_valid, io.s1_paddr >> pgUntagBits, RegEnable(prefetch_tag, prefetch_fire))
     /** this way is used by scratchpad.
       * [[tag_array]] corrupted.
       */
@@ -893,7 +898,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
         /** valid signal for D channel. */
         val respValid = RegInit(false.B)
         // ITIM access is unpipelined
-        tl.a.ready := !(tl_out.d.valid || s1_slaveValid || s2_slaveValid || s3_slaveValid || respValid || !io.clock_enabled)
+        tl.a.ready := !(s1_slaveValid || s2_slaveValid || s3_slaveValid || respValid || !io.clock_enabled || mshr.io.resp.valid)
         /** register used to latch TileLink request for one cycle. */
         val s1_a = RegEnable(tl.a.bits, s0_slaveValid)
         // Write Data(Put / PutPartial all mask is 1)
@@ -984,8 +989,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
 
   /* Connect the MSHR demand IO */
   mshr.io.demand_req.valid := s2_request_refill
-  mshr.io.demand_req.bits.vaddr := s2_vaddr
-  mshr.io.demand_req.bits.paddr := s2_paddr
+  mshr.io.demand_req.bits.index := s2_vaddr(idxBits+blockOffBits-1,blockOffBits)
+  mshr.io.demand_req.bits.paddr := (s2_paddr >> blockOffBits) << blockOffBits
   mshr.io.demand_req.bits.cache := io.s2_cacheable
 
   if(cacheParams.prefetch) {
@@ -1014,13 +1019,57 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   /** the entangling prefetcher module */
   if(cacheParams.entanglingParams.isDefined) {
     val prefetcher = Module(new EntanglingIPrefetcher)
-    prefetcher.io.fetch_req.bits.paddr := io.s1_paddr
-    prefetcher.io.fetch_req.bits.time := io.time
-    prefetcher.io.fetch_req.valid := s1_valid && !io.s1_kill 
-    prefetcher.io.miss_req.bits.paddr := io.s1_paddr
-    prefetcher.io.miss_req.bits.start := io.time
-    prefetcher.io.miss_req.bits.end := io.time
-    prefetcher.io.miss_req.valid := true.B
+    prefetcher.io.time := io.time
+
+    prefetcher.io.fetch_req.valid := s2_valid && !io.s2_kill
+    prefetcher.io.fetch_req.bits.paddr := s2_paddr
+    prefetcher.io.fetch_req.bits.index := s2_vaddr(untagBits-1,blockOffBits)
+
+    prefetcher.io.miss_req.valid := refill_done && mshr.io.resp.bits.demand
+    prefetcher.io.miss_req.bits.paddr := refill_paddr
+
+    prefetch_fire := prefetcher.io.pref_resp.fire() && (!refill_one_beat || refill_idx =/= prefetcher.io.pref_resp.bits.index)
+    prefetch_index := prefetcher.io.pref_resp.bits.index
+    prefetch_tag := prefetcher.io.pref_resp.bits.paddr >> pgUntagBits
+    val prefetch_waiting = RegInit(false.B)
+    val prefetch_good = RegInit(false.B)
+    val prefetch_reg = RegEnable(prefetcher.io.pref_resp.bits, prefetch_fire)
+
+    mshr.io.prefetch_req.valid := false.B
+    mshr.io.prefetch_req.bits.paddr := prefetch_reg.paddr
+    mshr.io.prefetch_req.bits.index := prefetch_reg.index
+    mshr.io.prefetch_req.bits.cache := true.B
+
+    when(prefetcher.io.pref_resp.valid) {
+      printf("[%d] Valid prefetch for idx:%d p:%x\n", io.time, prefetcher.io.pref_resp.bits.index, prefetcher.io.pref_resp.bits.paddr)
+    }
+
+    prefetcher.io.pref_resp.ready := !(s0_valid || s0_slaveValid || s3_slaveValid) && !prefetch_waiting
+
+    when(prefetch_waiting) {
+      when(refill_one_beat && refill_idx === prefetch_reg.index) {
+        printf("[%d] Dropping prefetch as duplicate\n", io.time)
+        prefetch_waiting := false.B
+        prefetch_good := false.B
+      } .elsewhen (!s1_hit || prefetch_good) {
+        mshr.io.prefetch_req.valid := true.B
+        prefetch_good := true.B
+      } .otherwise {
+        printf("[%d] Dropping prefetch\n", io.time)
+        prefetch_waiting := false.B
+      } 
+    }
+
+    when(prefetch_fire) {
+      printf("[%d] Consuming prefetch for idx:%d p:%x\n", io.time, prefetcher.io.pref_resp.bits.index, prefetcher.io.pref_resp.bits.paddr)
+      prefetch_waiting := true.B
+    }
+    when(mshr.io.prefetch_req.fire()) {
+      printf("[%d] Passing prefetch to MSHR idx:%d p:%x\n", io.time, prefetch_reg.index, prefetch_reg.paddr)
+      prefetch_waiting := false.B
+      prefetch_good := false.B
+    }
+    
   } else {
     mshr.io.prefetch_req.valid := false.B
     mshr.io.prefetch_req.bits := DontCare
