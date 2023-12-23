@@ -252,8 +252,9 @@ trait Emulator extends Cross.Module2[String, String] {
         "--output-split-cfuncs 20000",
         "--max-num-width 1048576",
         "--build-jobs", "9",
-        "--threads 1",
-        "-O1", "-fno-table",
+        "--threads 6",
+        "-O2", "-fno-table",
+        //"--noassert",
         "--j", "9",
         s"-I${vsrcDir().path}",
         // format: on
