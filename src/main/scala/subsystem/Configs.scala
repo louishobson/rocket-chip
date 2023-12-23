@@ -697,7 +697,7 @@ class WithCloneRocketTiles(n: Int = 1, cloneHart: Int = 0, overrideIdOffset: Opt
   }
 })
 
-class WithTransformedIPrefetcherParams(
+class WithTransformedEntanglingIPrefetcherParams(
     f: EntanglingIPrefetcherParams => EntanglingIPrefetcherParams, 
     create: Boolean = false
 ) extends Config((site, here, up) => {
@@ -714,16 +714,16 @@ class WithTransformedIPrefetcherParams(
   }
 })
 
-class WithEntanglingIPrefetcher() extends WithTransformedIPrefetcherParams(x=>x, true)
+class WithEntanglingIPrefetcher() extends WithTransformedEntanglingIPrefetcherParams(x=>x, true)
 
-class WithEntanglingIPrefetcherHBLen(len: Int) extends WithTransformedIPrefetcherParams(_.copy(
+class WithEntanglingIPrefetcherHBLen(len: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
   histBufLen = len
 ))
 
-class WithEntanglingIPrefetcherBBLimits(sigSize: Int, maxGap: Int) extends WithTransformedIPrefetcherParams(_.copy(
+class WithEntanglingIPrefetcherBBLimits(sigSize: Int, maxGap: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
   sigBBSize = sigSize, maxBBGapSize = maxGap
 ))
 
-class WithEntanglingIPrefetcherTableSize(nWays: Int, nSets: Int) extends WithTransformedIPrefetcherParams(_.copy(
+class WithEntanglingIPrefetcherTableSize(nWays: Int, nSets: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
   nWays = nWays, nSets = nSets
 ))
