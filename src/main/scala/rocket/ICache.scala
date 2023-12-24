@@ -368,6 +368,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
 
   /* Create the MSHR */
   val mshr = Module(new IMSHR(edge_out))
+
+  /* Link up the prefetch hinting wire and time IO */
   mshr.io.soft_prefetch := io.s2_prefetch
   mshr.io.time := io.time
 
@@ -808,74 +810,123 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     tl_in.map(tl => tl.a.valid || tl.d.valid || s1_slaveValid || s2_slaveValid || s3_slaveValid).getOrElse(false.B) || // ITIM
     s1_valid || s2_valid || ongoing_demand_miss || mshr.io.sending_hint || mshr.io.hint_outstanding // I$
 
-  /** the entangling prefetcher module */
+  /* Create the entangling prefetcher if the parameters were given */
   if(cacheParams.entanglingParams.isDefined) {
+
+    /* Create the prefetcher module */
     val prefetcher = Module(new EntanglingIPrefetcher)
+
+    /* Pass the time onto the prefetcher */
     prefetcher.io.time := io.time
 
+    /* Notify the prefetcher of a fetch when we have a valid request in stage 2 of the pipeline.
+     * Choose stage two because this is the latest stage the I$ request could be killed,
+     * so it minimizes how many false requests are sent to the prefetcher.
+     */
     prefetcher.io.fetch_req.valid := s2_valid && !io.s2_kill
     prefetcher.io.fetch_req.bits.paddr := s2_paddr
     prefetcher.io.fetch_req.bits.index := s2_vaddr(untagBits-1,blockOffBits)
 
+    /* Notify the prefetcher when a demand refill is done, and give it the paddr. */
     prefetcher.io.miss_req.valid := refill_done && mshr.io.resp.bits.demand
     prefetcher.io.miss_req.bits.paddr := refill_paddr
 
-    val prefetch_good = RegInit(false.B)
+    /* We will handle prefetch responses from the prefetcher in a mini two-stage pipeline. When 
+     * - there is an entry in the prefetch queue,
+     * - the ITIM isn't doing stuff that might interfere,
+     * - there isn't a prefetch response stuck in stage 2,
+     * then we can accept a prefetch response into stage 1.
+     * 
+     * In stage 0, a tag array lookup occurs.
+     * In stage 1, the prefetch response may either:
+     * - be dropped, if the address is already present in the cache or is currently being refilled into the cache; or
+     * - be passed to the MSHR, if it has space; or
+     * - get stuck in stage 1 waiting for space in the MSHR.
+     */
+
+    /* This register is used to indicate that a prefetch response, 
+     * which was found not to be present in the I$, is stuck in stage 1 waiting for the MSHR.
+     */
+    val prefetch_s1_good = RegInit(false.B)
+
+    /* This wire is driven high when a prefetch response in stage 1 is either dropped or passed to the MSHR.
+     * We can use this to know that the next entry in the prefetch queue can be brought into stage 0.
+     */
     val prefetch_handled = WireDefault(false.B)
-    val prefetch_waiting = RegEnable(prefetch_fire, false.B, prefetch_fire || prefetch_handled)
-    val prefetch_reg = RegEnable(prefetcher.io.pref_resp.bits, prefetch_fire)
 
-    prefetcher.io.pref_resp.ready := !(s0_slaveValid || s3_slaveValid) && (!prefetch_waiting || prefetch_handled)
-    prefetch_fire := prefetcher.io.pref_resp.fire() && (!mshr.io.resp.valid || refill_paddr =/= prefetcher.io.pref_resp.bits.paddr)
-    prefetch_idx := prefetcher.io.pref_resp.bits.index
+    /* This register indicates that there is a prefetch currently in stage 1. */
+    val prefetch_s1_valid = RegEnable(prefetch_fire, false.B, prefetch_fire || prefetch_handled)
 
-    val prefetch_tag_read = tag_array.read(prefetcher.io.pref_resp.bits.index, prefetch_fire)
+    /* This register stores the prefetch response currently in stage 1 */
+    val prefetch_s1_reg = RegEnable(prefetcher.io.prefetch_resp.bits, prefetch_fire)
 
+    /* Set the ready bit on the prefetch queue */
+    prefetcher.io.prefetch_resp.ready := !(s0_slaveValid || s3_slaveValid) && (!prefetch_s1_valid || prefetch_handled)
+
+    /* We could drop this prefetch in stage 0 if we see that a refill for it is occurring */
+    prefetch_fire := prefetcher.io.prefetch_resp.fire() && (!mshr.io.resp.valid || refill_paddr =/= prefetcher.io.prefetch_resp.bits.paddr)
+    prefetch_idx := prefetcher.io.prefetch_resp.bits.index
+
+    /* Read the tag array */
+    val prefetch_tag_read = tag_array.read(prefetcher.io.prefetch_resp.bits.index, prefetch_fire)
+
+    /* Check the tag read from stage 0 */
     val prefetch_tag_hit = (0 until nWays).map(i => {
-      val prefetch_vb_read = vb_array(i.U ## prefetch_reg.index)
+      val prefetch_vb_read = vb_array(i.U ## prefetch_s1_reg.index)
       val prefetch_enc_tag = tECC.decode(prefetch_tag_read(i))
       val (prefetch_tag_error_i, prefetch_tag_read_i) = Split(prefetch_enc_tag.uncorrected, tagBits)
-      !prefetch_tag_error_i && prefetch_vb_read && prefetch_tag_read_i === prefetch_reg.paddr >> pgUntagBits
+      !prefetch_tag_error_i && prefetch_vb_read && prefetch_tag_read_i === prefetch_s1_reg.paddr >> pgUntagBits
     }).reduce(_||_)
 
+    /* Set the MSHR IO, defaulting the validity bit to false for now */
     mshr.io.prefetch_req.valid := false.B
-    mshr.io.prefetch_req.bits.paddr := prefetch_reg.paddr
-    mshr.io.prefetch_req.bits.index := prefetch_reg.index
-    mshr.io.prefetch_req.bits.cache := true.B
+    mshr.io.prefetch_req.bits.paddr := prefetch_s1_reg.paddr
+    mshr.io.prefetch_req.bits.index := prefetch_s1_reg.index
+    mshr.io.prefetch_req.bits.cache := false.B
 
-    when(prefetcher.io.pref_resp.valid) {
-      printf("[%d] Valid prefetch for idx:%d p:%x\n", io.time, prefetcher.io.pref_resp.bits.index, prefetcher.io.pref_resp.bits.paddr)
+    when(prefetcher.io.prefetch_resp.valid) {
+      printf("[%d] Valid prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr)
     }
 
-    when(prefetch_waiting) {
-      when(mshr.io.resp.valid && refill_paddr === prefetch_reg.paddr) {
+    /* When we have a prefetch in stage 1... */
+    when(prefetch_s1_valid) {
+      /* We should drop it if we see a refill for the same paddr occurring */
+      when(mshr.io.resp.valid && refill_paddr === prefetch_s1_reg.paddr) {
         prefetch_handled := true.B
-        prefetch_good := false.B
-      } .elsewhen (!prefetch_tag_hit || prefetch_good) {
+        prefetch_s1_good := false.B
+      } 
+      /* Otherwise if the tag array missed, then tell the MSHR we have a valid prefetch waiting.
+       * If the MSHR is not ready for the request, then the prefetch response will get stuck in stage 1,
+       * and we need to set prefetch_s1_good so that we remember the outcome of checking the tag array.
+       */
+      .elsewhen (!prefetch_tag_hit || prefetch_s1_good) {
         mshr.io.prefetch_req.valid := true.B
-        prefetch_good := !mshr.io.prefetch_req.fire()
+        prefetch_s1_good := !mshr.io.prefetch_req.fire()
         prefetch_handled := mshr.io.prefetch_req.fire()
-      } .otherwise {
+      } 
+      /* In this case, the prefetch must be for a cache line that is already in the I$, so drop the prefetch */
+      .otherwise {
         prefetch_handled := true.B
-        prefetch_good := false.B
+        prefetch_s1_good := false.B
       } 
     }
 
     when(prefetch_handled && !mshr.io.prefetch_req.fire()) {
-      printf("[%d] Dropping prefetch for idx:%d p:%x\n", io.time, prefetch_reg.index, prefetch_reg.paddr)
+      printf("[%d] Dropping prefetch for idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
     }
     when(mshr.io.prefetch_req.fire()) {
-      printf("[%d] Passing prefetch to MSHR idx:%d p:%x\n", io.time, prefetch_reg.index, prefetch_reg.paddr)
+      printf("[%d] Passing prefetch to MSHR idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
     }
-    when(prefetcher.io.pref_resp.fire()) {
+    when(prefetcher.io.prefetch_resp.fire()) {
       when(prefetch_fire) {
-        printf("[%d] Consuming prefetch for idx:%d p:%x\n", io.time, prefetcher.io.pref_resp.bits.index, prefetcher.io.pref_resp.bits.paddr) 
+        printf("[%d] Consuming prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
       } .otherwise {
-        printf("[%d] Consuming but immediately dropping prefetch for idx:%d p:%x\n", io.time, prefetcher.io.pref_resp.bits.index, prefetcher.io.pref_resp.bits.paddr) 
+        printf("[%d] Consuming but immediately dropping prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
       }
     }
     
   } else {
+    /* Even when we have no prefetcher, we still need to set the prefetch request IO on the MSHR */
     mshr.io.prefetch_req.valid := false.B
     mshr.io.prefetch_req.bits := DontCare
   }
