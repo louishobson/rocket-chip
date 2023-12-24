@@ -727,3 +727,7 @@ class WithEntanglingIPrefetcherBBLimits(sigSize: Int, maxGap: Int) extends WithT
 class WithEntanglingIPrefetcherTableSize(nWays: Int, nSets: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
   nWays = nWays, nSets = nSets
 ))
+
+class WithEntanglingIPrefetcherCompressionCfg(entanglingBits: Int, maxEntanglings: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
+  entanglingBits = entanglingBits, maxEntanglings = maxEntanglings
+))
