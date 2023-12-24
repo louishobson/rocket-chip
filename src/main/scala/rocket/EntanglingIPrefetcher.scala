@@ -179,7 +179,7 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
       io.resp.valid := true.B
       for(i <- 1 to maxEntanglings) {
         when(i.U === req.len) {
-          io.resp.bits.ents := req.len(entanglingSizeBits-1,0) ## req.baddrs.take(i).map(_.pad(entanglingAddrBits/i)(entanglingAddrBits/i-1,0)).reduce(_##_)
+          io.resp.bits.ents := req.len(entanglingSizeBits-1,0) ## 0.U((entanglingAddrBits%i).W) ## req.baddrs.take(i).map(_.pad(entanglingAddrBits/i)(entanglingAddrBits/i-1,0)).reduce(_##_)
         }
       }
     } 
@@ -461,42 +461,42 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
    * The input IO is decoupled as it needs to be queued (as accessing the entangling table reduces what can be done at once).
    */
   val io = IO(new Bundle {
-    val pref_req = Flipped(Decoupled(new EntanglingTablePrefetchReq))
+    val prefetch_req = Flipped(Decoupled(new EntanglingTablePrefetchReq))
     val update_req = Flipped(Decoupled(new EntanglingTableUpdateReq))
     val entangle_req = Flipped(Decoupled(new EntanglingTableEntangleReq))
-    val pref_resp = Valid(new EntanglingTablePrefetchResp)
+    val prefetch_resp = Valid(new EntanglingTablePrefetchResp)
   })
 
   /* The prefetch response is invalid by default */
-  io.pref_resp.valid := false.B
-  io.pref_resp.bits := DontCare
+  io.prefetch_resp.valid := false.B
+  io.prefetch_resp.bits := DontCare
 
 
 
   /* Define the state register */
-  val s_ready :: s_pref_decode :: s_pref_output :: s_update_writeback :: s_entangle_encode :: s_entangle_writeback :: Nil = Enum(6)
+  val s_ready :: s_prefetch_decode :: s_prefetch_output :: s_update_writeback :: s_entangle_encode :: s_entangle_writeback :: Nil = Enum(6)
   val state = RegInit(s_ready)
 
 
 
   /* Define queues for each of the request types */
-  val pref_q = Queue(io.pref_req, eTablePrefetchQueueSize, flow=true)
+  val prefetch_q = Queue(io.prefetch_req, eTablePrefetchQueueSize, flow=true)
   val update_q = Queue(io.update_req, eTableUpdateQueueSize)
   val entangle_q = Queue(io.entangle_req, eTableEntangleQueueSize)
 
   /* The queues are all by default not ready */
-  pref_q.ready := false.B
+  prefetch_q.ready := false.B
   update_q.ready := false.B
   entangle_q.ready := false.B
 
   /* Define registers for holding each type of request */
-  val pref_r = Reg(new EntanglingTablePrefetchReq)
+  val prefetch_r = Reg(new EntanglingTablePrefetchReq)
   val update_r = Reg(new EntanglingTableUpdateReq)
   val entangle_r = Reg(new EntanglingTableEntangleReq)
 
   /* Registers for decoded entanglings */
-  val pref_baddrs = Reg(Vec(maxEntanglings, UInt(baddrBits.W)))
-  val pref_len = Reg(UInt(entanglingSizeBits.W))
+  val prefetch_baddrs = Reg(Vec(maxEntanglings, UInt(baddrBits.W)))
+  val prefetch_len = Reg(UInt(entanglingSizeBits.W))
 
   /* Define registers for holding onto whether an entangling table hit or missed */
   val read_hits_save = Reg(Vec(eTableNWays, Bool()))
@@ -616,10 +616,10 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
      */
     is(s_ready) {
       /* When we can move into the prefetch state, read the size and entanglings array and move into the decode state */
-      when(pref_q.valid) {
-        readSizeAndEntanglings(pref_q.bits.baddr)
-        pref_r := pref_q.deq() 
-        state := s_pref_decode
+      when(prefetch_q.valid) {
+        readSizeAndEntanglings(prefetch_q.bits.baddr)
+        prefetch_r := prefetch_q.deq() 
+        state := s_prefetch_decode
       }
       
       /* When we can move into the update state, read the size array and move into the writeback state */
@@ -691,7 +691,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
 
     /* When in the prefetch decode state, decode the entanglings and emit the first prefetch request */
-    is(s_pref_decode) {
+    is(s_prefetch_decode) {
       /* We want to move back into the ready state if the cache missed */
       when(!read_hit) {
         state := s_ready
@@ -699,45 +699,45 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
         /* Output a prefetch request for this basic block.
          * Don't include the head itself: if that address missed then it has already been requested.
          */
-        io.pref_resp.valid := read_size > 1.U
-        io.pref_resp.bits.head := pref_r.baddr + 1.U
-        io.pref_resp.bits.vidx := read_vidx
-        io.pref_resp.bits.size := read_size - 1.U
+        io.prefetch_resp.valid := read_size > 1.U
+        io.prefetch_resp.bits.head := prefetch_r.baddr + 1.U
+        io.prefetch_resp.bits.vidx := read_vidx
+        io.prefetch_resp.bits.size := read_size - 1.U
 
         /* If there are no dst entangled addresses then move to the ready state */
         when(read_ents_len === 0.U) {
           state := s_ready
         } .otherwise {
           /* Save the decoder output */
-          pref_baddrs := read_ents_baddrs
-          pref_len := read_ents_len - 1.U
+          prefetch_baddrs := read_ents_baddrs
+          prefetch_len := read_ents_len - 1.U
 
           /* Initiate the first read */
           readSize(read_ents_baddrs(read_ents_len-1.U))
 
           /* Swap to the output state */
-          state := s_pref_output
+          state := s_prefetch_output
         }
       }
     }
 
     /* When in the prefetch output state, keep outputting entanglings */
-    is(s_pref_output) {
+    is(s_prefetch_output) {
       /* Respond with the basic block on a cache hit */
       when(read_hit) {
-        io.pref_resp.valid := true.B
-        io.pref_resp.bits.head := pref_baddrs(pref_len)
-        io.pref_resp.bits.vidx := read_vidx
-        io.pref_resp.bits.size := read_size
+        io.prefetch_resp.valid := true.B
+        io.prefetch_resp.bits.head := prefetch_baddrs(prefetch_len)
+        io.prefetch_resp.bits.vidx := read_vidx
+        io.prefetch_resp.bits.size := read_size
       }
 
       /* If there are no dst entangled addresses then move to the ready state */
-      when(pref_len === 0.U) {
+      when(prefetch_len === 0.U) {
         state := s_ready
       } .otherwise {
         /* Decrement the length and trigger the next read */
-        pref_len := pref_len - 1.U
-        readSize(pref_baddrs(pref_len-1.U))
+        prefetch_len := prefetch_len - 1.U
+        readSize(prefetch_baddrs(prefetch_len-1.U))
       }
     }
 
@@ -877,7 +877,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   val io = IO(new Bundle {
     val fetch_req = Flipped(Valid(new EntanglingIPrefetcherFetchReq))
     val miss_req = Flipped(Valid(new EntanglingIPrefetcherMissReq))
-    val pref_resp = Decoupled(new EntanglingIPrefetcherPrefetchResp)
+    val prefetch_resp = Decoupled(new EntanglingIPrefetcherPrefetchResp)
     val time = Input(UInt(timeBits.W))
   })
 
@@ -920,8 +920,8 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   /* We don't want to keep asking the entangling table to look up the same baddr.
    * Only look up if we're extending the current basic block.
    */
-  entangling_table.io.pref_req.valid := io.fetch_req.valid && (fetch_baddr < bb_counter.io.resp.head || fetch_baddr >= bb_counter.io.resp.head + bb_counter.io.resp.size)
-  entangling_table.io.pref_req.bits.baddr := fetch_baddr
+  entangling_table.io.prefetch_req.valid := io.fetch_req.valid && (fetch_baddr < bb_counter.io.resp.head || fetch_baddr >= bb_counter.io.resp.head + bb_counter.io.resp.size)
+  entangling_table.io.prefetch_req.bits.baddr := fetch_baddr
 
   /* Link up the new BB IO */
   entangling_table.io.update_req.valid := bb_counter.io.resp.done
@@ -944,9 +944,9 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   val prefetch_queue = Module(new PrefetchQueue)
 
   /* Connect the prefetch queue IO to the entangling table and the final prefetch output */
-  prefetch_queue.io.req.valid := entangling_table.io.pref_resp.valid
-  prefetch_queue.io.req.bits := entangling_table.io.pref_resp.bits
-  io.pref_resp <> prefetch_queue.io.resp
+  prefetch_queue.io.req.valid := entangling_table.io.prefetch_resp.valid
+  prefetch_queue.io.req.bits := entangling_table.io.prefetch_resp.bits
+  io.prefetch_resp <> prefetch_queue.io.resp
 
 }
 
@@ -975,7 +975,7 @@ class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int)(impli
     val decoder = Module(new EntanglingDecoder)
 
     /* Create a ROM for baddr sequence */
-    val test_baddrs_in = VecInit(baddrs.appendedAll(Seq.fill(7-baddrs.length)(0)).map(_.U(baddrBits.W)))
+    val test_baddrs_in = VecInit(baddrs.appendedAll(Seq.fill(maxEntanglings+1-baddrs.length)(0)).map(_.U(baddrBits.W)))
 
     /* Perform the encoding */
     encoder.io.req.bits.len := baddrs.length.U
@@ -1004,7 +1004,7 @@ class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int)(impli
       )
 
       /* Check that each of the output baddrs are present in the input sequence */
-      for(i <- 0 until 6) {
+      for(i <- 0 until maxEntanglings) {
         when(i.U < test_len_out) {
           assert(test_baddrs_in.contains(test_baddrs_out(i)),
             s"[EntanglerTest $id] baddr %x present in the output, but not the input!", 
@@ -1188,8 +1188,8 @@ class EntanglingTableTest(
     /* Create ROMS for the test inputs/outputs (make sure none of them are empty) */
     val update_rom = VecInit(updateReq.appended((new EntanglingTableUpdateReq).Lit()))
     val entangle_rom = VecInit(entangleReq.appended((new EntanglingTableEntangleReq).Lit()))
-    val pref_req_rom = VecInit(prefetchReq.appended((new EntanglingTablePrefetchReq).Lit()))
-    val pref_resp_rom = VecInit(prefetchResp.appended((new EntanglingTablePrefetchResp).Lit()))
+    val prefetch_req_rom = VecInit(prefetchReq.appended((new EntanglingTablePrefetchReq).Lit()))
+    val prefetch_resp_rom = VecInit(prefetchResp.appended((new EntanglingTablePrefetchResp).Lit()))
 
     /* Create a counter to time sending requests.
      * Assume each request can take a maximum of 8 clock cycles to complete.
@@ -1201,9 +1201,9 @@ class EntanglingTableTest(
 
     /* Indices for when to start each type of request */
     val start_entangle_req = updateReq.length
-    val start_pref_req = start_entangle_req + entangleReq.length
-    val end_pref_req = start_pref_req + prefetchReq.length
-    val end_iteration = end_pref_req + 1
+    val start_prefetch_req = start_entangle_req + entangleReq.length
+    val end_prefetch_req = start_prefetch_req + prefetchReq.length
+    val end_iteration = end_prefetch_req + 1
 
     /* Block until we have started */
     val started = RegEnable(io.start, false.B, io.start)
@@ -1216,24 +1216,24 @@ class EntanglingTableTest(
     entangling_table.io.update_req.bits := update_rom(req_iter)
 
     /* Make the entangle requests */
-    entangling_table.io.entangle_req.valid := req_fire && req_iter >= start_entangle_req.U && req_iter < start_pref_req.U
+    entangling_table.io.entangle_req.valid := req_fire && req_iter >= start_entangle_req.U && req_iter < start_prefetch_req.U
     entangling_table.io.entangle_req.bits := entangle_rom(req_iter -& start_entangle_req.U)
 
     /* Make the prefetch requests */
-    entangling_table.io.pref_req.valid := req_fire && req_iter >= start_pref_req.U && req_iter < end_pref_req.U
-    entangling_table.io.pref_req.bits := pref_req_rom(req_iter -& start_pref_req.U)
+    entangling_table.io.prefetch_req.valid := req_fire && req_iter >= start_prefetch_req.U && req_iter < end_prefetch_req.U
+    entangling_table.io.prefetch_req.bits := prefetch_req_rom(req_iter -& start_prefetch_req.U)
 
     /* Check the results of prefetching */
     val resp_iter = RegInit(0.U(log2Up(prefetchResp.length+1).W))
-    when(entangling_table.io.pref_resp.valid) {
+    when(entangling_table.io.prefetch_resp.valid) {
       assert(resp_iter < prefetchResp.length.U,
         s"[EntanglingTableTest $id] extra prefetch request of {%x, %d}\n",
-        entangling_table.io.pref_resp.bits.head, entangling_table.io.pref_resp.bits.size
+        entangling_table.io.prefetch_resp.bits.head, entangling_table.io.prefetch_resp.bits.size
       )
-      assert(entangling_table.io.pref_resp.bits === pref_resp_rom(resp_iter),
+      assert(entangling_table.io.prefetch_resp.bits === prefetch_resp_rom(resp_iter),
         s"[EntanglingTableTest $id] output index %d mismatch: expected {%x, %d}, but got {%x, %d}\n",
-        resp_iter, pref_resp_rom(resp_iter).head, pref_resp_rom(resp_iter).size,
-        entangling_table.io.pref_resp.bits.head, entangling_table.io.pref_resp.bits.size 
+        resp_iter, prefetch_resp_rom(resp_iter).head, prefetch_resp_rom(resp_iter).size,
+        entangling_table.io.prefetch_resp.bits.head, entangling_table.io.prefetch_resp.bits.size 
       )
       resp_iter := resp_iter + 1.U
     }

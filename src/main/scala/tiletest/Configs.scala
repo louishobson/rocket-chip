@@ -1,21 +1,22 @@
 package freechips.rocketchip.tiletest
 
 import chisel3._
+import chisel3.experimental.BundleLiterals._
+import chisel3.util.log2Up
 import freechips.rocketchip.rocket._
+import freechips.rocketchip.subsystem._
 import freechips.rocketchip.system._
 import freechips.rocketchip.util._
 import freechips.rocketchip.unittest._
 import org.chipsalliance.cde.config._
-import chisel3.experimental.BundleLiterals._
-import chisel3.util.log2Up
 
 class WithEntanglingTests extends Config((site, here, up) => {
   case UnitTests => (q: Parameters) => {
     class Tests(implicit val p: Parameters) extends HasEntanglingIPrefetcherParameters {
       def midBaddr = 1 << (baddrBits-1)
       def produce = Seq(
-        /* TEST 1: We can encode any two arbitrary addresses without compression */
-        Module(new EntanglingTest(0, midBaddr, Seq(0, maxBaddr), 0)),
+        /* TEST 1: We can encode any (entanglingAddrBits/baddrBits) arbitrary addresses without compression */
+        Module(new EntanglingTest(0, midBaddr, Seq.tabulate(entanglingAddrBits/baddrBits){case 0 => maxBaddr; case _ => 0}, 0)),
 
         /* TEST 2: We can encode maxEntanglings highly-compressed addresses */
         Module(new EntanglingTest(1, midBaddr, Seq.tabulate(maxEntanglings)(midBaddr+_), 0)),
@@ -203,7 +204,7 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
           Seq(prefetchResp(2, 15, 1), prefetchResp(2, 20, 2), prefetchResp(4, 28, 3)) // And we don't expect a prefetch response for baddr 3
         )),
 
-        /* TEST 8: Entangling a dst baddr twice will only entangle it once */
+        /* TEST 9: Entangling a dst baddr twice will only entangle it once */
         Module(new EntanglingTableTest(8,
           Seq(updateReq(1, 16, 1), updateReq(2, 20, 2)),
           Seq(entangleReq(1, 2), entangleReq(1, 2)),
@@ -211,18 +212,18 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
           Seq(prefetchResp(2, 15, 1), prefetchResp(2, 20, 2))
         )),
 
-        /* TEST 9: Nothing will be emitted when the requested BB has size 1 */
-        Module(new EntanglingTableTest(8,
+        /* TEST 10: Nothing will be emitted when the requested BB has size 1 */
+        Module(new EntanglingTableTest(9,
           Seq(updateReq(1, 1, 1)),
           Seq(),
           Seq(prefetchReq(1)), 
           Seq()
         )),
 
-        /* TEST 10: An update request replaces an old entry if the vidx is different,
+        /* TEST 11: An update request replaces an old entry if the vidx is different,
          * but only if there are enough bits for a vidx to be required.
          */
-        Module(new EntanglingTableTest(8,
+        Module(new EntanglingTableTest(10,
           Seq(updateReq(1, 16, 0), updateReq(1, 12, 1)),
           Seq(),
           Seq(prefetchReq(1)), 
