@@ -834,8 +834,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     /* We will handle prefetch responses from the prefetcher in a mini two-stage pipeline. When 
      * - there is an entry in the prefetch queue,
      * - the ITIM isn't doing stuff that might interfere,
-     * - there isn't a prefetch response stuck in stage 2,
-     * then we can accept a prefetch response into stage 1.
+     * - there isn't a prefetch response stuck in stage 1,
+     * then we can accept a prefetch response into stage 0.
      * 
      * In stage 0, a tag array lookup occurs.
      * In stage 1, the prefetch response may either:
