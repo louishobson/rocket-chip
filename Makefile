@@ -35,7 +35,7 @@ test.elf:
 
 test.run: test.elf
 	$(base_dir)/out/emulator/$(TEST_PROJECT).TestHarness/$(TEST_CONFIG_FULL)/verilator/elf.dest/emulator \
-	+verbose pk >scratch/test.log 2>&1
+	+verbose --seed=1700375579 pk >scratch/test.log 2>&1
 
 
 
@@ -66,25 +66,28 @@ run.trace: vsim.trace $(RUN).riscv
 	pk $(RUN).riscv \
 	2>&1 | spike-dasm > $(RUN).log
 
+run.aux: vsim
+	$(base_dir)/out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator pk $(RUN) 2>&1 | spike-dasm > scratch/aux.log 
+
 
 
 clean.emulator:
-	rm -r out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)
+	rm -rf out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)
 
 clean.verilator:
-	rm -r out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator
+	rm -rf out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/
 
 clean.verilog:
-	rm -r out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/mfccompiler
+	rm -rf out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/mfccompiler/
 
 clean.emulator.all:
-	rm -r out/emulator/
+	rm -rf out/emulator/
 
 clean.test:
-	rm -r out/emulator/$(TEST_PROJECT).TestHarness
+	rm -rf out/emulator/$(TEST_PROJECT).TestHarness
 
 clean.test.verilator:
-	rm -r out/emulator/$(TEST_PROJECT).TestHarness/$(CONFIG_FULL)/verilator
+	rm -rf out/emulator/$(TEST_PROJECT).TestHarness/$(CONFIG_FULL)/verilator
 
 clean.purge:
-	rm -r out/
+	rm -rf out/
