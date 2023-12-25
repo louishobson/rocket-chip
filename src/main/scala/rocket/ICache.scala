@@ -843,12 +843,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
      * - be passed to the MSHR, if it has space; or
      * - get stuck in stage 1 waiting for space in the MSHR.
      */
-
-    /* This register is used to indicate that a prefetch response, 
-     * which was found not to be present in the I$, is stuck in stage 1 waiting for the MSHR.
-     */
-    val prefetch_s1_good = RegInit(false.B)
-
+    
     /* This wire is driven high when a prefetch response in stage 1 is either dropped or passed to the MSHR.
      * We can use this to know that the next entry in the prefetch queue can be brought into stage 0.
      */
@@ -867,8 +862,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     prefetch_fire := prefetcher.io.prefetch_resp.fire() && (!mshr.io.resp.valid || refill_paddr =/= prefetcher.io.prefetch_resp.bits.paddr)
     prefetch_idx := prefetcher.io.prefetch_resp.bits.index
 
-    /* Read the tag array */
-    val prefetch_tag_read = tag_array.read(prefetcher.io.prefetch_resp.bits.index, prefetch_fire)
+    /* Read the tag array and hold its value (for when a prefetch gets stuck in s1) */
+    val prefetch_tag_read = tag_array.readAndHold(prefetcher.io.prefetch_resp.bits.index, prefetch_fire)
 
     /* Check the tag read from stage 0 */
     val prefetch_tag_hit = (0 until nWays).map(i => {
@@ -891,23 +886,15 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     /* When we have a prefetch in stage 1... */
     when(prefetch_s1_valid) {
       /* We should drop it if we see a refill for the same paddr occurring */
-      when(mshr.io.resp.valid && refill_paddr === prefetch_s1_reg.paddr) {
+      when(mshr.io.resp.valid && refill_paddr === prefetch_s1_reg.paddr || prefetch_tag_hit) {
         prefetch_handled := true.B
-        prefetch_s1_good := false.B
       } 
-      /* Otherwise if the tag array missed, then tell the MSHR we have a valid prefetch waiting.
-       * If the MSHR is not ready for the request, then the prefetch response will get stuck in stage 1,
-       * and we need to set prefetch_s1_good so that we remember the outcome of checking the tag array.
+      /* Otherwise, tell the MSHR we have a valid prefetch waiting.
+       * If the MSHR is not ready for the request, then the prefetch will get stuck in stage 1.
        */
-      .elsewhen (!prefetch_tag_hit || prefetch_s1_good) {
-        mshr.io.prefetch_req.valid := true.B
-        prefetch_s1_good := !mshr.io.prefetch_req.fire()
-        prefetch_handled := mshr.io.prefetch_req.fire()
-      } 
-      /* In this case, the prefetch must be for a cache line that is already in the I$, so drop the prefetch */
       .otherwise {
-        prefetch_handled := true.B
-        prefetch_s1_good := false.B
+        mshr.io.prefetch_req.valid := true.B
+        prefetch_handled := mshr.io.prefetch_req.fire()
       } 
     }
 
@@ -929,6 +916,10 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     /* Even when we have no prefetcher, we still need to set the prefetch request IO on the MSHR */
     mshr.io.prefetch_req.valid := false.B
     mshr.io.prefetch_req.bits := DontCare
+
+    /* Also we need to set the prefetch wires which the rest of the I$ uses */
+    prefetch_fire := false.B
+    prefetch_idx := DontCare
   }
 
   /** index to access [[data_arrays]] and [[tag_array]].
