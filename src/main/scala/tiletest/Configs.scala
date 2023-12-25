@@ -99,8 +99,8 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
   case UnitTests => (q: Parameters) => {
     class Tests(implicit val p: Parameters) extends HasEntanglingIPrefetcherParameters {
       def insertReq(head: Int, time: Int) = (new HistoryBufferInsertReq).Lit(_.head -> head.U, _.time -> time.U)
-      def searchReq(time: Int) = (new HistoryBufferSearchReq).Lit(_.target_time -> time.U)
-      def searchResp(head: Int) = Some((new HistoryBufferSearchResp).Lit(_.head -> head.U))
+      def searchReq(dst: Int, time: Int) = (new HistoryBufferSearchReq).Lit(_.dst -> dst.U, _.target_time -> time.U)
+      def searchResp(src: Int, dst: Int) = Some((new HistoryBufferSearchResp).Lit(_.src -> src.U, _.dst -> dst.U))
       def produce = Seq(
         /* TEST 1: We can search a non-full buffer for a positive result.
          * Insert (head: i, time: i*10) for i in [0, histBufLen-2).
@@ -110,8 +110,8 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
         Module(new HistoryBufferTest(0,
           Seq.tabulate(histBufLen-2)(i => insertReq(i, i*10)),
           histBufLen-2,
-          Seq.tabulate(histBufLen)(i => searchReq(i*10+5)),
-          Seq.tabulate(histBufLen)(i => searchResp(i.min(histBufLen-3)))
+          Seq.tabulate(histBufLen)(i => searchReq(histBufLen-2, i*10+5)),
+          Seq.tabulate(histBufLen)(i => searchResp(i.min(histBufLen-3), histBufLen-2))
         )),
 
         /* TEST 2: We can search a the buffer and start receiving positive results
@@ -123,8 +123,8 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
         Module(new HistoryBufferTest(1,
           Seq.tabulate(histBufLen)(i => insertReq(i+2, (i+2)*10)),
           histBufLen,
-          Seq.tabulate(histBufLen)(i => searchReq(i*10+5)),
-          Seq(None, None) ++ Seq.tabulate(histBufLen-2)(i => searchResp(i+2))
+          Seq.tabulate(histBufLen)(i => searchReq(histBufLen+2, i*10+5)),
+          Seq(None, None) ++ Seq.tabulate(histBufLen-2)(i => searchResp(i+2, histBufLen+2))
         )),
 
         /* TEST 3: Ensure that we can search while simultaneously inserting.
@@ -137,9 +137,19 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
         Module(new HistoryBufferTest(2,
           Seq.tabulate(histBufLen*2)(i => insertReq(i, i)),
           histBufLen,
-          Seq.tabulate(histBufLen)(i => searchReq(histBufLen-1)),
-          Seq.fill(histBufLen-(histBufSearchLatency-1))(searchResp(histBufLen-1)) 
+          Seq.tabulate(histBufLen)(i => searchReq(histBufLen*2, histBufLen-1)),
+          Seq.fill(histBufLen-(histBufSearchLatency-1))(searchResp(histBufLen-1, histBufLen*2)) 
             ++ Seq.fill(histBufSearchLatency-1)(None)
+        )),
+
+        /* TEST 4: When the destination address is found in the history buffer before a valid source address,
+         * then the search should not produce a result.
+         */
+        Module(new HistoryBufferTest(3,
+          Seq.tabulate(histBufLen)(i => insertReq(i, i)),
+          histBufLen,
+          Seq.tabulate(histBufLen)(i => searchReq(4, i)),
+          Seq.fill(5)(None) ++ Seq.tabulate(histBufLen-5)(i => searchResp(i+5, 4))
         ))
       )
     }
