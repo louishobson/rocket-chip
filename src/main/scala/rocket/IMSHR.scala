@@ -90,8 +90,8 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
         status(0).index := req.index
         status(0).paddr := req.paddr
         status(0).valid := true.B
+        printf("[%d] Servicing demand request for idx:%d p:%x\n", io.time, req.index, req.paddr)
       }
-      printf("[%d] Servicing demand request for idx:%d p:%x\n", io.time, req.index, req.paddr)
     } 
     
     /* On a prefetch request, we need to choose where to insert the request */
@@ -106,8 +106,8 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
             status(i+1).index := req.index
             status(i+1).paddr := req.paddr
             status(i+1).valid := true.B
+            printf(s"[%d] Servicing prefetch request for idx:%d p:%x src:${i+1}\n", io.time, req.index, req.paddr)
           }
-          printf(s"[%d] Servicing prefetch request for idx:%d p:%x src:${i+1}\n", io.time, req.index, req.paddr)
         }
       }
     }
