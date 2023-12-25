@@ -8,9 +8,8 @@ import chisel3.util.random.LFSR
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tile._
 import freechips.rocketchip.unittest._
-import freechips.rocketchip.util.{DescribedSRAM, Split}
+import freechips.rocketchip.util.{DescribedSRAM, SeqToAugmentedSeq, Split}
 import org.chipsalliance.cde.config.Parameters
-import os.read
 
 
 
@@ -151,7 +150,7 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
   io.resp.bits.ents := DontCare
 
   /* If we are ready and there is available input, then consume it */
-  when(!busy && io.req.valid) {
+  when(io.req.fire) {
     busy := true.B
     req := io.req.bits
   }
@@ -319,6 +318,7 @@ class HistoryBufferInsertReq(implicit p: Parameters) extends CoreBundle with Has
 /** [[HistoryBufferSearchReq]] defines the interface for requesting a search of the HB.
   */
 class HistoryBufferSearchReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val dst = UInt(baddrBits.W)
   val target_time = UInt(timeBits.W)
 }
 
@@ -326,7 +326,8 @@ class HistoryBufferSearchReq(implicit p: Parameters) extends CoreBundle with Has
   * If the search is unsuccessful, then no response is made. 
   */
 class HistoryBufferSearchResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
-  val head = UInt(baddrBits.W)
+  val src = UInt(baddrBits.W)
+  val dst = UInt(baddrBits.W)
 }
 
 /** [[HistoryBuffer]] implements a history buffer, with BB heads labelled with timestamps.
@@ -336,7 +337,7 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Define the IO */
   val io = IO(new Bundle{
     val insert_req = Flipped(Valid(new HistoryBufferInsertReq))
-    val search_req = Flipped(Valid(new HistoryBufferSearchReq))
+    val search_req = Flipped(Decoupled(new HistoryBufferSearchReq))
     val search_resp = Valid(new HistoryBufferSearchResp)
   })
 
@@ -359,58 +360,74 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
       hist_buf(i).time := hist_buf(i-1).time
     }
   }
-
-  /* Here, we want to search through the history buffer for the first entry with a timestamp
-   * earlier than the target timestamp.
-   * One option is to create a big combinatorial circuit across the entire buffer in order to 
-   * find a match in a single clock cycle. However, this would be a very long combinatorial circuit.
-   * Another option is to examine each entry in the history buffer in a separate cycle. Latency of the lookup
-   * isn't a problem, but this would require a lot of extra registers.
-   * To balance this we can mix the above: split the history buffer into groups of histBufSearchFragLen size,
-   * and perform the search as a pipeline, taking one cycle to examine each group.
-   * In order to do this, we will define a bundle which will store the state for each
-   * stage of the search pipeline.
-   */
-  class HBSearchResultBundle extends Bundle {
-    val head = UInt(baddrBits.W)
-    val valid = Bool()
-  }
+  
+  /* Define a bundle which will be used to store search data */
   class HBSearchBundle extends Bundle {
+    val src = UInt(baddrBits.W)
+    val dst = UInt(baddrBits.W)
     val target_time = UInt(timeBits.W)
-    val result = new HBSearchResultBundle
     val valid = Bool()
+    val found = Bool()
   }
 
-  /* Define the initial state of the search pipeline */
-  val hb_search_init = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
-  when(io.search_req.valid) {
-    hb_search_init.target_time := io.search_req.bits.target_time
-    hb_search_init.result.head := DontCare
-    hb_search_init.result.valid := false.B
+  /* Define a register to store the state between iterations of the search,
+   * and an iterator to indicate the current iteration
+   */
+  val hb_search_reg = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
+  val hb_search_iter = Reg(UInt(log2Up(histBufLen/histBufSearchFragLen+1).W))
+  when(io.search_req.fire()) {
+    hb_search_iter := 0.U
+    hb_search_reg.src := DontCare
+    hb_search_reg.dst := io.search_req.bits.dst
+    hb_search_reg.target_time := io.search_req.bits.target_time
+    hb_search_reg.valid := true.B
+    hb_search_reg.found := false.B
   }
-  hb_search_init.valid := io.search_req.valid
- 
-  /* Now group up the history buffer and fold over the stages of the pipeline */
-  val hb_search_result = hist_buf.grouped(histBufSearchFragLen).foldLeft(hb_search_init)((prev, h) => {
-    val next = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
-    when(prev.valid) {
-      next.target_time := prev.target_time
-      next.result := h.foldLeft(prev.result)((p, x) => {
-        val w = Wire(new HBSearchResultBundle)
-        when (!p.valid && x.time <= prev.target_time) { 
-          w.head := x.head
-          w.valid := true.B
-        } .otherwise { w := p }
+
+  /* Keep searching while the search register is valid */
+  when(hb_search_reg.valid) {
+
+    /* Invalidate the search register if a source is found or we reach the end of the buffer */
+    when(hb_search_reg.found || hb_search_iter === (histBufLen/histBufSearchFragLen).U) {
+      hb_search_reg.valid := false.B
+    } 
+
+    /* Otherwise we must not have found a result, so keep searching */
+    .otherwise {
+      
+      /* Increment the iterator */
+      hb_search_iter := hb_search_iter + 1.U
+
+      /* Group the history buffer into groups of histBufSearchFragLen length, 
+       * choose the hb_search_iter'th group, and fold over that group.
+       */ 
+      hb_search_reg := hist_buf.grouped(histBufSearchFragLen).map(VecInit(_)).toSeq(hb_search_iter).foldLeft(hb_search_reg)((p, x) => {
+        /* Define a wire which is the result of examining this history buffer entry */
+        val w = WireDefault(new HBSearchBundle, p)
+        /* Only update this wire if the search is still valid and a source address has not been found */
+        when(p.valid && !p.found) {
+          /* If we see the destination address before finding a source address, then invalidate the search.
+           * Else if we find a candidate source address, then save it.
+           */
+          when(x.head === hb_search_reg.dst) {
+            w.valid := false.B
+          } .elsewhen(x.time <= hb_search_reg.target_time) { 
+            w.src := x.head
+            w.found := true.B
+          }
+        }
         w
       })
     }
-    next.valid := prev.valid
-    next
-  })
+  }
+
+  /* We are ready for another search request when the search register is invalid */
+  io.search_req.ready := !hb_search_reg.valid
 
   /* Output the result of the search */
-  io.search_resp.valid := hb_search_result.valid && hb_search_result.result.valid
-  io.search_resp.bits.head := hb_search_result.result.head
+  io.search_resp.valid := hb_search_reg.valid && hb_search_reg.found
+  io.search_resp.bits.src := hb_search_reg.src
+  io.search_resp.bits.dst := hb_search_reg.dst
 
 }
 
@@ -907,9 +924,13 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   /* Link up the search IO. We don't need to search if
    *  - the miss is invalid, or
    *  - the miss address isn't for this BB's head.
+   * Assert that the history buffer is ready for a search. If it isn't then something strange has happened:
+   * a search request only comes in on a refill finishing, and a refill takes at least eight cycles.
    */
   val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
+  assert(!history_buffer.io.search_req.valid || history_buffer.io.search_req.ready)
   history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
+  history_buffer.io.search_req.bits.dst := miss_baddr
   history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (io.time - bb_counter.io.resp.time)
 
 
@@ -935,8 +956,8 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
    * then we just won't make an entangling.
    */
   entangling_table.io.entangle_req.valid := history_buffer.io.search_resp.valid && entangling_table.io.entangle_req.bits.src =/= entangling_table.io.entangle_req.bits.dst
-  entangling_table.io.entangle_req.bits.src := history_buffer.io.search_resp.bits.head
-  entangling_table.io.entangle_req.bits.dst := ShiftRegister(miss_baddr, histBufSearchLatency)
+  entangling_table.io.entangle_req.bits.src := history_buffer.io.search_resp.bits.src
+  entangling_table.io.entangle_req.bits.dst := history_buffer.io.search_resp.bits.dst
 
 
 
@@ -1149,8 +1170,8 @@ class HistoryBufferTest(id: Int, in: Seq[HistoryBufferInsertReq], delay: Int, qu
         i, j, k, out_valid_rom(k), history_buffer.io.search_resp.valid
       )
       assert(!out_valid_rom(k) || history_buffer.io.search_resp.bits === out_bits_rom(k),
-        s"[HistoryBufferTest $id] i=%d j=%d k=%d expected result %x, but got %x",
-        i, j, k, out_bits_rom(k).head, history_buffer.io.search_resp.bits.head
+        s"[HistoryBufferTest $id] i=%d j=%d k=%d expected result {src:%x, dst:%x}, but got {src:%x, dst:%x}",
+        i, j, k, out_bits_rom(k).src, out_bits_rom(k).dst, history_buffer.io.search_resp.bits.src, history_buffer.io.search_resp.bits.dst
       )
     }
 
