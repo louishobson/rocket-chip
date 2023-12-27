@@ -373,61 +373,61 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Define a register to store the state between iterations of the search,
    * and an iterator to indicate the current iteration
    */
-  val hb_search_reg = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
-  val hb_search_iter = Reg(UInt(log2Up(histBufLen/histBufSearchFragLen+1).W))
+  val search_status = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
+  val search_iter = Reg(UInt(log2Up(histBufLen/histBufSearchFragLen+1).W))
   when(io.search_req.fire()) {
-    hb_search_iter := 0.U
-    hb_search_reg.src := DontCare
-    hb_search_reg.dst := io.search_req.bits.dst
-    hb_search_reg.target_time := io.search_req.bits.target_time
-    hb_search_reg.valid := true.B
-    hb_search_reg.found := false.B
+    search_iter := 0.U
+    search_status.src := DontCare
+    search_status.dst := io.search_req.bits.dst
+    search_status.target_time := io.search_req.bits.target_time
+    search_status.valid := true.B
+    search_status.found := false.B
   }
 
   /* Keep searching while the search register is valid */
-  when(hb_search_reg.valid) {
+  when(search_status.valid) {
 
     /* Invalidate the search register if a source is found or we reach the end of the buffer */
-    when(hb_search_reg.found || hb_search_iter === (histBufLen/histBufSearchFragLen).U) {
-      hb_search_reg.valid := false.B
+    when(search_status.found || search_iter === (histBufLen/histBufSearchFragLen).U) {
+      search_status.valid := false.B
     } 
 
     /* Otherwise we must not have found a result, so keep searching */
     .otherwise {
       
       /* Increment the iterator */
-      hb_search_iter := hb_search_iter + 1.U
+      search_iter := search_iter + 1.U
 
       /* Group the history buffer into groups of histBufSearchFragLen length, 
-       * choose the hb_search_iter'th group, and fold over that group.
+       * choose the search_iter'th group, and fold over that group.
        */ 
-      hb_search_reg := hist_buf.grouped(histBufSearchFragLen).map(VecInit(_)).toSeq(hb_search_iter).foldLeft(hb_search_reg)((p, x) => {
+      search_status := hist_buf.grouped(histBufSearchFragLen).map(VecInit(_)).toSeq(search_iter).foldLeft(search_status)((prev_search_status, hb_entry) => {
         /* Define a wire which is the result of examining this history buffer entry */
-        val w = WireDefault(new HBSearchBundle, p)
+        val next_search_status = WireDefault(prev_search_status)
         /* Only update this wire if the search is still valid and a source address has not been found */
-        when(p.valid && !p.found) {
+        when(prev_search_status.valid && !prev_search_status.found) {
           /* If we see the destination address before finding a source address, then invalidate the search.
            * Else if we find a candidate source address, then save it.
            */
-          when(x.head === hb_search_reg.dst) {
-            w.valid := false.B
-          } .elsewhen(x.time <= hb_search_reg.target_time) { 
-            w.src := x.head
-            w.found := true.B
+          when(hb_entry.head === search_status.dst) {
+            next_search_status.valid := false.B
+          } .elsewhen(hb_entry.time <= search_status.target_time) { 
+            next_search_status.src := hb_entry.head
+            next_search_status.found := true.B
           }
         }
-        w
+        next_search_status
       })
     }
   }
 
   /* We are ready for another search request when the search register is invalid */
-  io.search_req.ready := !hb_search_reg.valid
+  io.search_req.ready := !search_status.valid
 
   /* Output the result of the search */
-  io.search_resp.valid := hb_search_reg.valid && hb_search_reg.found
-  io.search_resp.bits.src := hb_search_reg.src
-  io.search_resp.bits.dst := hb_search_reg.dst
+  io.search_resp.valid := search_status.valid && search_status.found
+  io.search_resp.bits.src := search_status.src
+  io.search_resp.bits.dst := search_status.dst
 
 }
 
