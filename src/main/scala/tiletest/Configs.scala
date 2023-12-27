@@ -103,53 +103,56 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
       def searchResp(src: Int, dst: Int) = Some((new HistoryBufferSearchResp).Lit(_.src -> src.U, _.dst -> dst.U))
       def produce = Seq(
         /* TEST 1: We can search a non-full buffer for a positive result.
-         * Insert (head: i, time: i*10) for i in [0, histBufLen-2).
-         * After this, search for (time: i*10+5) for i in [0, histBufLen).
-         * We expect search i to return (head: min(i, histBufLen-3)).
+         * Insert {head: i, time: i*10} for i in [0, histBufLen-2).
+         * After this, search for {dst: histBufLen, time: 15}.
+         * We expect search i to return {src: 1, dst: 5).
          */
         Module(new HistoryBufferTest(0,
           Seq.tabulate(histBufLen-2)(i => insertReq(i, i*10)),
           histBufLen-2,
-          Seq.tabulate(histBufLen)(i => searchReq(histBufLen-2, i*10+5)),
-          Seq.tabulate(histBufLen)(i => searchResp(i.min(histBufLen-3), histBufLen-2))
+          searchReq(histBufLen, 15),
+          searchResp(1, histBufLen)
         )),
 
-        /* TEST 2: We can search a the buffer and start receiving positive results
-         * when our search time enters the range contained in the buffer.
-         * Insert (head: i+2, time: (i+2)*10) for i in [0, histBufLen).
-         * After this, search for (time: i*10+5) for i in [0, histBufLen).
-         * The first two searches should fail, but the rest should succeed with (head: i).
+        /* TEST 2: The search will fail when all timestamps in the history buffer are after the requested time.
+         * Insert {head: i, time: (i+2)*10} for i in [0, histBufLen).
+         * After this, search for {dst: 5, time: 15}.
+         * The search should not yield any result.
          */
         Module(new HistoryBufferTest(1,
-          Seq.tabulate(histBufLen)(i => insertReq(i+2, (i+2)*10)),
+          Seq.tabulate(histBufLen)(i => insertReq(i, (i+2)*10)),
           histBufLen,
-          Seq.tabulate(histBufLen)(i => searchReq(histBufLen+2, i*10+5)),
-          Seq(None, None) ++ Seq.tabulate(histBufLen-2)(i => searchResp(i+2, histBufLen+2))
+          searchReq(histBufLen, 15),
+          None
         )),
 
         /* TEST 3: Ensure that we can search while simultaneously inserting.
-         * Insert (head: i, time: i) for i in [0, histBufLen*2).
+         * Insert {head: i, time: i} for i in [0, histBufLen*2).
          * After histBufLen cycles the whole buffer is full.
-         * At this point, send histBufLen search requests for (time: histBufLen-1).
-         * This will succeed for the first (histBufLen - (histBufSearchLatency-1)) cycles.
-         * But after that, (head: histBufLen-1, time: histBufLen-1) will be evicted before being found by the search.
+         * At this point, send histBufLen a request for {dst: histBufLen*2, time: histBufLen-1}.
+         * This should succeed, even though insertions are still ongoing, unless histBufLen==1 or
+         * histBufSearchFragLen==1, in which case all valid entries are shifted out of the buffer
+         * before the search finds them.
          */
         Module(new HistoryBufferTest(2,
           Seq.tabulate(histBufLen*2)(i => insertReq(i, i)),
           histBufLen,
-          Seq.tabulate(histBufLen)(i => searchReq(histBufLen*2, histBufLen-1)),
-          Seq.fill(histBufLen-(histBufSearchLatency-1))(searchResp(histBufLen-1, histBufLen*2)) 
-            ++ Seq.fill(histBufSearchLatency-1)(None)
+          searchReq(histBufLen*2, histBufLen-1),
+          if (histBufLen>1 && histBufSearchFragLen>1) searchResp(histBufLen-1, histBufLen*2) else None
         )),
 
         /* TEST 4: When the destination address is found in the history buffer before a valid source address,
          * then the search should not produce a result.
+         * Insert {head: i, time: i} for i in [0, histBufLen).
+         * After this, search for {dst: histBufLen-1, time: 0}.
+         * There should be no response, as the destination address will be seen before or at the same
+         * time as the entry with timestamp 0.
          */
         Module(new HistoryBufferTest(3,
           Seq.tabulate(histBufLen)(i => insertReq(i, i)),
           histBufLen,
-          Seq.tabulate(histBufLen)(i => searchReq(4, i)),
-          Seq.fill(5)(None) ++ Seq.tabulate(histBufLen-5)(i => searchResp(i+5, 4))
+          searchReq(histBufLen-1, 0),
+          None
         ))
       )
     }

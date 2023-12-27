@@ -89,8 +89,8 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   /* The number of bits required to store a BB size */
   def lgMaxBBSize = log2Up(maxBBSize + 1).toInt
 
-  /* the history buffer search latency */
-  def histBufSearchLatency = math.ceil(histBufLen/histBufSearchFragLen).toInt + 1
+  /* The maximum history buffer search latency */
+  def maxHistBufSearchLatency = math.ceil(histBufLen/histBufSearchFragLen).toInt + 1
 
   /* The maximum possible baddr and time */
   def maxTime = (math.pow(2, timeBits)-1).toInt
@@ -1123,10 +1123,10 @@ class BBCounterTest(id: Int, in: Seq[(BBCounterReq, Bool)], out: Seq[BBCounterRe
   * @param id The ID of the test (for debugging purposes).
   * @param in A sequence of insert requests to make to the history buffer.
   * @param delay A delay (in cycles) before making the search requests.
-  * @param queries A sequence of queries to make after delay cycles.
-  * @param out A sequence of search responses to expect from the search requests.
+  * @param query A search request to make after delay cycles.
+  * @param out A response to expect from the search request, or no response.
   */
-class HistoryBufferTest(id: Int, in: Seq[HistoryBufferInsertReq], delay: Int, queries: Seq[HistoryBufferSearchReq], out: Seq[Option[HistoryBufferSearchResp]])(implicit val p: Parameters) 
+class HistoryBufferTest(id: Int, in: Seq[HistoryBufferInsertReq], delay: Int, query: HistoryBufferSearchReq, out: Option[HistoryBufferSearchResp])(implicit val p: Parameters) 
     extends UnitTest 
     with HasEntanglingIPrefetcherParameters 
 {
@@ -1136,21 +1136,15 @@ class HistoryBufferTest(id: Int, in: Seq[HistoryBufferInsertReq], delay: Int, qu
     /* Create the history buffer */
     val history_buffer = Module(new HistoryBuffer)
 
-    /* Create ROM arrays for the sequences */
-    assert(queries.length == out.length)
+    /* Create ROM array for the insertion sequence */
     val in_rom = VecInit(in)
-    val queries_rom = VecInit(queries)
-    val out_bits_rom = VecInit(out.map(_.getOrElse((new HistoryBufferSearchResp).Lit())))
-    val out_valid_rom = VecInit(out.map(_.isDefined.B))
 
     /* Block until we have started */
     val started = RegEnable(io.start, false.B, io.start)
 
     /* Create registers to iterate over the inputs/outputs */
-    def maxIterations = in.length.max(delay+queries.length+histBufSearchLatency)
+    def maxIterations = in.length.max(delay+maxHistBufSearchLatency+1)
     val i = RegInit(0.U(log2Up(maxIterations+1).W))
-    val j = i - delay.U
-    val k = j - histBufSearchLatency.U
 
     /* Iterate i */
     when(started && i =/= maxIterations.U) { i := i + 1.U }
@@ -1159,19 +1153,32 @@ class HistoryBufferTest(id: Int, in: Seq[HistoryBufferInsertReq], delay: Int, qu
     history_buffer.io.insert_req.valid := started && i < in.length.U
     history_buffer.io.insert_req.bits := in_rom(i)
 
-    /* Wire up the search requests */
-    history_buffer.io.search_req.valid := started && i >= delay.U && j < queries.length.U
-    history_buffer.io.search_req.bits := queries_rom(j)
+    /* Wire up the search request */
+    history_buffer.io.search_req.valid := started && i === delay.U
+    history_buffer.io.search_req.bits := query
+
+    /* Remember if an output has been seen */ 
+    val seen_output = RegInit(false.B)
+    when(!seen_output) { seen_output := history_buffer.io.search_resp.valid }
 
     /* Check the search results */
-    when(started && i >= (delay+histBufSearchLatency).U && k < out.length.U) {
-      assert(history_buffer.io.search_resp.valid === out_valid_rom(k),
-        s"[HistoryBufferTest $id] i=%d j=%d k=%d expected output validity [%d], but got [%d]",
-        i, j, k, out_valid_rom(k), history_buffer.io.search_resp.valid
+    if(out.isDefined) {
+      assert(!seen_output || !history_buffer.io.search_resp.valid,
+        s"[HistoryBufferTest $id] received second output {src:%x, dst:%x}",
+        history_buffer.io.search_resp.bits.src, history_buffer.io.search_resp.bits.dst
       )
-      assert(!out_valid_rom(k) || history_buffer.io.search_resp.bits === out_bits_rom(k),
-        s"[HistoryBufferTest $id] i=%d j=%d k=%d expected result {src:%x, dst:%x}, but got {src:%x, dst:%x}",
-        i, j, k, out_bits_rom(k).src, out_bits_rom(k).dst, history_buffer.io.search_resp.bits.src, history_buffer.io.search_resp.bits.dst
+      assert(!history_buffer.io.search_resp.valid || history_buffer.io.search_resp.bits === out.get,
+        s"[HistoryBufferTest $id] expected result {src:%x, dst:%x}, but got {src:%x, dst:%x}",
+        out.get.src, out.get.dst, history_buffer.io.search_resp.bits.src, history_buffer.io.search_resp.bits.dst
+      )
+      assert(seen_output || i =/= maxIterations.U, 
+        s"[HistoryBufferTest $id] no output received, but expected {src:%x, dst:%x}",
+        out.get.src, out.get.dst
+      )
+    } else {
+      assert(!history_buffer.io.search_resp.valid,
+        s"[HistoryBufferTest $id] expected no output, but got {src: %x, dst: %x}",
+        history_buffer.io.search_resp.bits.src, history_buffer.io.search_resp.bits.dst
       )
     }
 
