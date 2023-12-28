@@ -101,6 +101,9 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
 
   /* The bits used to just store the entangling addresses */
   def entanglingAddrBits = entanglingBits - entanglingSizeBits
+
+  /* The sequence of entry bits for varying numbers of entanglings */
+  def entanglingEntryBitsLookup = Seq.tabulate(maxEntanglings+2){case 0 => 0; case i => entanglingAddrBits/i}
 }
 
 
@@ -158,9 +161,9 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
   /* If we are in the busy state, then continue with the ongoing encoding */
   when(busy) {
     /* The number of bits each baddr will be compressed to.
-     * Division by 0 is fine here, as entryBits won't actually be used in that case.
+     * This is equivalent to (entanglingAddrBits.U / req.len), but as a lookup table.
      */
-    val entryBits = entanglingAddrBits.U / req.len
+    val entryBits = VecInit(entanglingEntryBitsLookup.map(_.U))(req.len)
 
     /* Consider whether we can perform the compression. We must have
      *  - maxEntanglings or fewer addresses to entangle, and
@@ -171,14 +174,22 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
     }.reduce(_&&_)
 
     /* We can produce an output entangling sequence when baddrs_okay is flagged.
-     * ents is initialized to 0, which is the correct output for the case where req.len is 0.
+     * Note that io.resp.bits.ents is initialized to 0, which is the correct output for the case where req.len is 0.
      */
     when(baddrs_okay) {
+      /* Encoding is finished and the output is now valid */
       busy := false.B
       io.resp.valid := true.B
+      /* Generate hardware for each possible number of entanglings and then select the correct output.
+       * The hardware just consists of splicing the correct bits together in the right positions, 
+       * which would be quite problematic to do dynamically.
+       */
       for(i <- 1 to maxEntanglings) {
         when(i.U === req.len) {
-          io.resp.bits.ents := req.len(entanglingSizeBits-1,0) ## 0.U((entanglingAddrBits%i).W) ## req.baddrs.take(i).map(_.pad(entanglingAddrBits/i)(entanglingAddrBits/i-1,0)).reduce(_##_)
+          io.resp.bits.ents := 
+            req.len(entanglingSizeBits-1,0) ## 
+            0.U((entanglingAddrBits%i).W) ## 
+            req.baddrs.take(i).map(_.pad(entanglingAddrBits/i)(entanglingAddrBits/i-1,0)).reduce(_##_)
         }
       }
     } 
@@ -217,21 +228,20 @@ class EntanglingDecoder(implicit p: Parameters) extends CoreModule with HasEntan
   io.resp.baddrs := DontCare
   io.resp.len := mode
 
-  /* Iterate over each of the modes, and hardware branch over each iteration equalling the mode.
-   * Note that this also works when the mode is 0, and that we don't care about the output vector in that case.
+  /* Generate hardware for decoding each possible number entanglings and select the correct output.
+   * Note that we don't care about the output vector when there zero entanglings.
    */
   for (i <- 1 to maxEntanglings) {
     when(i.U === mode) {
-
       /* This is the number of bits for each entangling entry in this mode */
       val entryBits = entanglingAddrBits / i
 
       /* Iterate over the number of addresses we need to extract */
       for (j <- 0 until i) {
-        /* Detect whether the entire address fits in this entry, which makes setting the output easier */
+        /* The logic is simpler when the addresses are not compressed */
         if (entryBits >= baddrBits) {
           io.resp.baddrs(i-j-1) := io.req.ents(baddrBits+j*entryBits-1,j*entryBits)
-        /* Else we need to reconstruct the address based on the head */
+        /* Otherwise we need to reconstruct the address based on the head */
         } else {
           io.resp.baddrs(i-j-1) := io.req.head(baddrBits-1,entryBits) ## io.req.ents((j+1)*entryBits-1,j*entryBits)
         }
