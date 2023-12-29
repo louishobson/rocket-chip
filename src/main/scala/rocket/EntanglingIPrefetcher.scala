@@ -206,12 +206,13 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
     .otherwise {
       /* Generate a random number for which index is to be evicted */
       assert(req.len > 1.U)
+      val req_len1 = req.len-1.U
       val rnd = Partitions(LFSR(8, busy && !baddrs_okay), if (keepFirstBaddr) maxEntanglings else maxEntanglings+1)(
-        if (keepFirstBaddr) req.len-1.U else req.len
+        if (keepFirstBaddr) req_len1 else req.len
       )
 
       /* Move the last register to the position of the evictee */
-      req.baddrs(if (keepFirstBaddr) rnd+1.U else rnd) := req.baddrs(req.len-1.U)
+      req.baddrs(if (keepFirstBaddr) rnd+1.U else rnd) := req.baddrs(req_len1)
       
       /* Decrement the length register */
       req.len := req.len - 1.U
