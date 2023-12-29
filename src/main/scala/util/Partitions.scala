@@ -5,7 +5,7 @@ import chisel3.util.{OHToUInt, PriorityEncoder, log2Floor}
 
 object Partitions {
 
-    def apply(in: UInt, maxNumPartitions: Int): Vec[UInt] = {
+    def apply(in: UInt, maxNumPartitions: Int): Seq[UInt] = {
         /* Get the maximum value plus one of in */
         val max_in = 1 << in.getWidth
 
@@ -30,7 +30,7 @@ object Partitions {
         })
 
         /* Concatenate the results and return */
-        VecInit(lower_results ++ upper_results)
+        lower_results ++ upper_results
     }    
 }
 
