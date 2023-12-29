@@ -1,11 +1,7 @@
 package freechips.rocketchip.util
 
 import chisel3._
-import chisel3.util.OHToUInt
-import chisel3.util.log2Ceil
-import chisel3.util.log2Floor
-import chisel3.experimental.prefix
-import chisel3.util.PriorityEncoder
+import chisel3.util.{OHToUInt, PriorityEncoder, log2Floor}
 
 object Partitions {
 
