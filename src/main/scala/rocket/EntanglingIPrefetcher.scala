@@ -102,8 +102,12 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   /* The bits used to just store the entangling addresses */
   def entanglingAddrBits = entanglingBits - entanglingSizeBits
 
-  /* The sequence of entry bits for varying numbers of entanglings */
-  def entanglingEntryBitsLookup = Seq.tabulate(maxEntanglings+2){case 0 => 0; case i => entanglingAddrBits/i}
+  /* The sequence of masks where the set bits are the bits lost by compression */
+  def entanglingEqualityMaskLookup = Seq.tabulate(maxEntanglings+2){case 0 => 0; case i =>
+    val entryBits = (entanglingAddrBits/i) min baddrBits
+    val compressBits = baddrBits - entryBits
+    ((1<<compressBits)-1)<<entryBits
+  }
 }
 
 
@@ -154,8 +158,12 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
 
   /* If we are ready and there is available input, then consume it */
   when(io.req.fire) {
+    /* Save the input and move to the ready state */
     busy := true.B
     req := io.req.bits
+
+    /* Check that we haven't been given more than (maxEntanglings+1) baddrs */
+    assert(io.req.bits.len <= (maxEntanglings+1).U)
   }
 
   /* If we are in the busy state, then continue with the ongoing encoding */
@@ -163,14 +171,14 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
     /* The number of bits each baddr will be compressed to.
      * This is equivalent to (entanglingAddrBits.U / req.len), but as a lookup table.
      */
-    val entryBits = VecInit(entanglingEntryBitsLookup.map(_.U))(req.len)
+    val entanglingMask = VecInit(entanglingEqualityMaskLookup.map(_.U(baddrBits.W)))(req.len)
 
     /* Consider whether we can perform the compression. We must have
      *  - maxEntanglings or fewer addresses to entangle, and
      *  - each address must share the same MSBs as the head.
      */
-    val baddrs_okay = req.len <= maxEntanglings.U && req.baddrs.zipWithIndex.map{
-      case (baddr, i) => (baddr >> entryBits) === (req.head >> entryBits) || i.U >= req.len
+    val baddrs_okay = req.len =/= (maxEntanglings+1).U && req.baddrs.zipWithIndex.map{
+      case (baddr, i) => (baddr & entanglingMask) === (req.head & entanglingMask) || i.U >= req.len
     }.reduce(_&&_)
 
     /* We can produce an output entangling sequence when baddrs_okay is flagged.
