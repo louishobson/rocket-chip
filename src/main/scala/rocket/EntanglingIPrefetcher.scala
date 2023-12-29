@@ -386,7 +386,7 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   val search_status = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
   val search_iter = Reg(UInt(log2Up(histBufLen/histBufSearchFragLen+1).W))
   when(io.search_req.fire()) {
-    search_iter := 0.U
+    search_iter := (histBufLen/histBufSearchFragLen).U
     search_status.src := DontCare
     search_status.dst := io.search_req.bits.dst
     search_status.target_time := io.search_req.bits.target_time
@@ -398,20 +398,21 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   when(search_status.valid) {
 
     /* Invalidate the search register if a source is found or we reach the end of the buffer */
-    when(search_status.found || search_iter === (histBufLen/histBufSearchFragLen).U) {
+    when(search_status.found || search_iter === 0.U) {
       search_status.valid := false.B
     } 
 
     /* Otherwise we must not have found a result, so keep searching */
     .otherwise {
       
-      /* Increment the iterator */
-      search_iter := search_iter + 1.U
+      /* Decrement the iterator */
+      val search_iter1 = search_iter - 1.U
+      search_iter := search_iter1
 
       /* Group the history buffer into groups of histBufSearchFragLen length, 
        * choose the search_iter'th group, and fold over that group.
        */ 
-      search_status := hist_buf.grouped(histBufSearchFragLen).map(VecInit(_)).toSeq(search_iter).foldLeft(search_status)((prev_search_status, hb_entry) => {
+      search_status := hist_buf.grouped(histBufSearchFragLen).map(VecInit(_)).toSeq.reverse(search_iter1).foldLeft(search_status)((prev_search_status, hb_entry) => {
         /* Define a wire which is the result of examining this history buffer entry */
         val next_search_status = WireDefault(prev_search_status)
         /* Only update this wire if the search is still valid and a source address has not been found */
