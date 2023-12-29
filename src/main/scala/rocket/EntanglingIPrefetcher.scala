@@ -8,7 +8,7 @@ import chisel3.util.random.LFSR
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tile._
 import freechips.rocketchip.unittest._
-import freechips.rocketchip.util.{DescribedSRAM, SeqToAugmentedSeq, Split}
+import freechips.rocketchip.util.{DescribedSRAM, Partitions, SeqToAugmentedSeq, Split}
 import org.chipsalliance.cde.config.Parameters
 
 
@@ -206,7 +206,9 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
     .otherwise {
       /* Generate a random number for which index is to be evicted */
       assert(req.len > 1.U)
-      val rnd = LFSR(8) % (if (keepFirstBaddr) req.len-1.U else req.len)
+      val rnd = Partitions(LFSR(8, busy && !baddrs_okay), if (keepFirstBaddr) maxEntanglings else maxEntanglings+1)(
+        if (keepFirstBaddr) req.len-1.U else req.len
+      )
 
       /* Move the last register to the position of the evictee */
       req.baddrs(if (keepFirstBaddr) rnd+1.U else rnd) := req.baddrs(req.len-1.U)
