@@ -8,7 +8,7 @@ import chisel3.util.random.LFSR
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tile._
 import freechips.rocketchip.unittest._
-import freechips.rocketchip.util.{DescribedSRAM, Partitions, SeqToAugmentedSeq, Split}
+import freechips.rocketchip.util.{DescribedSRAM, PartitionsOH, Split}
 import org.chipsalliance.cde.config.Parameters
 
 
@@ -99,8 +99,11 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   /* The bits required to store the number of entanglings */
   def entanglingSizeBits = log2Up(maxEntanglings+1)
 
-  /* The bits used to just store the entangling addresses */
+  /* The bits used to just store the entangling addresses.
+   * Assert that at least one address can be fully stored.
+   */
   def entanglingAddrBits = entanglingBits - entanglingSizeBits
+  assert(entanglingAddrBits >= baddrBits)
 
   /* The sequence of masks where the set bits are the bits lost by compression */
   def entanglingEqualityMaskLookup = Seq.tabulate(maxEntanglings+2){case 0 => 0; case i =>
@@ -204,15 +207,23 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
     
     /* Otherwise (baddrs_okay is false) we need to randomly pop one of the addresses */
     .otherwise {
-      /* Generate a random number for which index is to be evicted */
+      /* There should be at least two baddrs left */
       assert(req.len > 1.U)
+
+      /* Generate a OH value indicating which baddr is the victim */
+      val maxPossibleVictims = if (keepFirstBaddr) maxEntanglings else maxEntanglings+1
       val req_len1 = req.len-1.U
-      val rnd = Partitions(LFSR(8, busy && !baddrs_okay), if (keepFirstBaddr) maxEntanglings else maxEntanglings+1)(
-        if (keepFirstBaddr) req_len1 else req.len
-      )
+      val req_len2 = req.len-2.U
+      val rnd_oh = VecInit(PartitionsOH(LFSR(8, busy && !baddrs_okay), maxPossibleVictims))(
+        if (keepFirstBaddr) req_len2 else req_len1
+      ).asUInt.pad(maxPossibleVictims)
 
       /* Move the last register to the position of the evictee */
-      req.baddrs(if (keepFirstBaddr) rnd+1.U else rnd) := req.baddrs(req_len1)
+      for(i <- 0 until maxPossibleVictims) {
+        when(rnd_oh(i)) {
+          req.baddrs(if (keepFirstBaddr) i+1 else i) := req.baddrs(req_len1)
+        }
+      }
       
       /* Decrement the length register */
       req.len := req.len - 1.U
@@ -423,7 +434,12 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
       /* Group the history buffer into groups of histBufSearchFragLen length, 
        * choose the search_iter'th group, and fold over that group.
        */ 
-      search_status := hist_buf.grouped(histBufSearchFragLen).map(VecInit(_)).toSeq.reverse(search_iter1).foldLeft(search_status)((prev_search_status, hb_entry) => {
+      search_status := VecInit(hist_buf
+        .grouped(histBufSearchFragLen)
+        .map(VecInit(_))
+        .toSeq
+        .reverse
+      )(search_iter1).foldLeft(search_status)((prev_search_status, hb_entry) => {
         /* Define a wire which is the result of examining this history buffer entry */
         val next_search_status = WireDefault(prev_search_status)
         /* Only update this wire if the search is still valid and a source address has not been found */
