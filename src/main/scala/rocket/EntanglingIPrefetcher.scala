@@ -216,7 +216,7 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
       val req_len2 = req.len-2.U
       val rnd_oh = VecInit(PartitionsOH(LFSR(8, busy && !baddrs_okay), maxPossibleVictims))(
         if (keepFirstBaddr) req_len2 else req_len1
-      ).asUInt.pad(maxPossibleVictims)
+      ).pad(maxPossibleVictims)
 
       /* Move the last register to the position of the evictee */
       for(i <- 0 until maxPossibleVictims) {
@@ -226,7 +226,7 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
       }
       
       /* Decrement the length register */
-      req.len := req.len - 1.U
+      req.len := req_len1
     }
   }  
 }
