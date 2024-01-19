@@ -67,7 +67,7 @@ run.trace: vsim.trace $(RUN).riscv
 	2>&1 | spike-dasm > $(RUN).log
 
 run.aux: vsim
-	$(base_dir)/out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator pk $(RUN) 2>&1 | spike-dasm > scratch/aux.log 
+	$(base_dir)/out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator pk $(RUN) > scratch/aux.log 2>&1
 
 
 
