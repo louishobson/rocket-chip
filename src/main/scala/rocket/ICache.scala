@@ -412,7 +412,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   require (edge_out.manager.minLatency > 0)
 
   /** block request from CPU when refill or scratch pad access. */
-  io.req.ready := !(s0_slaveValid || s3_slaveValid) && (!mshr.io.resp.valid || refill_idx =/= s0_vaddr(untagBits-1,blockOffBits))
+  io.req.ready := !(s0_slaveValid || s3_slaveValid) && (!mshr.io.resp.valid || refill_idx =/= s0_vaddr(untagBits-1,blockOffBits)) && (!ongoing_demand_miss || s0_vaddr(untagBits-1,blockOffBits) =/= demand_miss_index)
 
   /** way to be replaced, implemented with a hardcoded random replacement algorithm */
   val repl_way = if (isDM) 0.U else {
