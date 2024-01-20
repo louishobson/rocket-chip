@@ -20,7 +20,7 @@ class BaseConfig extends Config(
   new BaseSubsystemConfig
 )
 
-class DefaultConfig extends Config(new WithNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
+class DefaultConfig extends Config(new WithL1ICacheWays(2) ++ new WithL1ICacheSets(32) ++ new WithNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
 
 class EntanglingIPrefetcherConfig extends Config(new WithEntanglingIPrefetcher ++ new DefaultConfig)
 
