@@ -144,9 +144,9 @@ trait Emulator extends Cross.Module2[String, String] {
         "-disable-infer-rw",
         "--disable-annotation-unknown",
         "-dedup",
-        "-O=debug",
+        "-O=release",
         "--split-verilog",
-        "--preserve-values=named",
+        //"--preserve-values=named",
         "--output-annotation-file=mfc.anno.json",
         s"-o=${T.dest}"
       ).call(T.dest)
