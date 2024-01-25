@@ -50,10 +50,11 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val index = UInt(idxBits.W)
     val paddr = UInt(paddrBits.W)
     val valid = Bool()
+    val demand = Bool()
   }).Lit(_.valid -> false.B))))
 
   /* Whether we could accept another request (ignoring whether the TL channel is ready) */
-  val can_accept_demand_req = io.demand_req.valid && !status(0).valid
+  val can_accept_demand_req = io.demand_req.valid && !status.map(_.valid).asUInt.andR
   val can_accept_prefetch_req = hasPrefetcher.B && io.prefetch_req.valid && !status.tail.map(_.valid).asUInt.andR
 
   /* We will accept the next demand request whenever we have space and the A TL port is ready */
@@ -73,7 +74,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   assert(req.paddr(blockOffBits-1,0) === 0.U)
 
   /* Check if the request is already in flight */
-  val req_in_flight = status.map(s => s.valid && s.paddr === req.paddr).reduce(_||_)
+  val req_in_flight = status.map(s => s.valid && s.paddr === req.paddr).asUInt.orR
 
   /* Default the channel */
   io.a_channel.valid := io.sending_hint || ((can_accept_demand_req || can_accept_prefetch_req) && !req_in_flight)
@@ -82,31 +83,25 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   /* Set the bits of the A channel */
   when(io.a_channel.valid && !io.sending_hint) {
 
-    /* Just replace the 0th register on a demand request */
-    when(can_accept_demand_req) {
-      /* Make the request and save in the register */
-      io.a_channel.bits := createGetRequest(req.paddr, req.cache, 0)
-      when(io.a_channel.ready) {
-        status(0).index := req.index
-        status(0).paddr := req.paddr
-        status(0).valid := true.B
-        printf("[%d] Servicing demand request for idx:%d p:%x\n", io.time, req.index, req.paddr)
-      }
-    } 
-    
-    /* On a prefetch request, we need to choose where to insert the request */
-    .otherwise {
-      /* Iterate over the possibility of inserting into each register */
-      for(i <- 0 until nPrefetchMSHRs) {
-        val mask = (0 until nPrefetchMSHRs).map(_ < i).map(_.B).asUInt
-        val free = status.tail.map(!_.valid).asUInt
-        when(free(i) && (mask & free) === 0.U) {
-          io.a_channel.bits := createGetRequest(req.paddr, req.cache, i+1)
-          when(io.a_channel.fire) {
-            status(i+1).index := req.index
-            status(i+1).paddr := req.paddr
-            status(i+1).valid := true.B
-            printf(s"[%d] Servicing prefetch request for idx:%d p:%x src:${i+1}\n", io.time, req.index, req.paddr)
+    /* Iterate over the possibility of inserting into each register */
+    for(i <- 0 to nPrefetchMSHRs) {
+      val mask = (0 to nPrefetchMSHRs).map(_ < i).map(_.B).asUInt
+      val free = status.tail.map(!_.valid).prepended(!status(0).valid && can_accept_demand_req).asUInt
+      when(free(i) && (mask & free) === 0.U) {
+
+        /* Make the request to higher-level memory */
+        io.a_channel.bits := createGetRequest(req.paddr, req.cache, i)
+
+        /* Save the request */
+        when(io.a_channel.ready) {
+          status(i).index := req.index
+          status(i).paddr := req.paddr
+          status(i).valid := true.B
+          status(i).demand := can_accept_demand_req
+          when(can_accept_demand_req) {
+            printf(s"[%d] Servicing demand request for idx:%d p:%x src:${i}\n", io.time, req.index, req.paddr)
+          } .otherwise {
+            printf(s"[%d] Servicing prefetch request for idx:%d p:%x src:${i}\n", io.time, req.index, req.paddr)
           }
         }
       }
@@ -150,8 +145,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   val response_valid = io.d_channel.valid && edge.hasData(io.d_channel.bits)
   val response_fire = response_valid && io.resp.ready
   val (_, _, response_done, response_count) = edge.count(io.d_channel)
-  val response_source = io.d_channel.bits.source
-  val response_status = status(response_source)
+  val response_status = status(io.d_channel.bits.source)
   assert(!response_valid || response_status.valid)
 
   /* Save the response into a wire */
@@ -161,7 +155,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   response.beat := DontCare
   response.index := response_status.index
   response.paddr := response_status.paddr
-  response.demand := response_source === 0.U
+  response.demand := response_status.demand
   response.denied := io.d_channel.bits.denied
   response.corrupt := io.d_channel.bits.corrupt
   response.data := io.d_channel.bits.data
@@ -186,7 +180,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   io.resp.bits.beat := response_valid
 
   when(response_fire) {
-    printf("[%d] Responding to request for src:%d idx:%d p:%x cnt:%d done:[%d]\n", io.time, response_source, response_status.index, response_status.paddr, response_count, response_done)
+    printf("[%d] Responding to request for src:%d idx:%d p:%x cnt:%d done:[%d]\n", io.time, io.d_channel.bits.source, response_status.index, response_status.paddr, response_count, response_done)
   }
 
   /* Get information about the prefetcher */
