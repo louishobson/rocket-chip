@@ -28,7 +28,8 @@ case object BankedL2Key extends Field(BankedL2Params())
 
 case class BankedL2Params(
   nBanks: Int = 1,
-  coherenceManager: CoherenceManagerInstantiationFn = broadcastManager
+  coherenceManager: CoherenceManagerInstantiationFn = broadcastManager,
+  latency: Option[TLLatencies] = None
 ) {
   require (isPow2(nBanks) || nBanks == 0)
 }

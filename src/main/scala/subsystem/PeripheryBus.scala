@@ -21,7 +21,8 @@ case class PeripheryBusParams(
     dtsFrequency: Option[BigInt] = None,
     zeroDevice: Option[BuiltInZeroDeviceParams] = None,
     errorDevice: Option[BuiltInErrorDeviceParams] = None,
-    replication: Option[ReplicatedRegion] = None)
+    replication: Option[ReplicatedRegion] = None,
+    latency: Option[TLLatencies] = None)
   extends HasTLBusParams
   with HasBuiltInDeviceParams
   with HasRegionReplicatorParams
