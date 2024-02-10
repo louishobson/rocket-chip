@@ -232,11 +232,10 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
 }
 
 /** [[EntanglingDecoder]] Decompresses compressed baddrs into separate registers and a length indicator.
-  * The process is purely combinatorial logic (bit splicing), so the IO is not even Valid.
   */
 class EntanglingDecoder(implicit p: Parameters) extends CoreModule with HasEntanglingIPrefetcherParameters {
 
-  /* Define the IO. We don't need decoupled IO as decoding only takes one cycle. */
+  /* Define the IO. We don't need Valid IO as the process is entirely combinatorial. */
   val io = IO(new Bundle {
     val req = Input(new EntanglerEncodeResp)
     val resp = Output(new EntanglerEncodeReq(maxEntanglings))
