@@ -250,7 +250,7 @@ class EntanglingDecoder(implicit p: Parameters) extends CoreModule with HasEntan
   io.resp.len := mode
 
   /* Generate hardware for decoding each possible number entanglings and select the correct output.
-   * Note that we don't care about the output vector when there zero entanglings.
+   * Note that we don't care about the output vector when there are zero entanglings.
    */
   for (i <- 1 to maxEntanglings) {
     when(i.U === mode) {
