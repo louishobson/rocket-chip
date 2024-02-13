@@ -99,9 +99,9 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
           status(i).valid := true.B
           status(i).demand := can_accept_demand_req
           when(can_accept_demand_req) {
-            printf(s"[%d] Servicing demand request for idx:%d p:%x src:${i}\n", io.time, req.index, req.paddr)
+            //printf(s"[%d] Servicing demand request for idx:%d p:%x src:${i}\n", io.time, req.index, req.paddr)
           } .otherwise {
-            printf(s"[%d] Servicing prefetch request for idx:%d p:%x src:${i}\n", io.time, req.index, req.paddr)
+            //printf(s"[%d] Servicing prefetch request for idx:%d p:%x src:${i}\n", io.time, req.index, req.paddr)
           }
         }
       }
@@ -180,7 +180,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   io.resp.bits.beat := response_valid
 
   when(response_fire) {
-    printf("[%d] Responding to request for src:%d idx:%d p:%x cnt:%d done:[%d]\n", io.time, io.d_channel.bits.source, response_status.index, response_status.paddr, response_count, response_done)
+    //printf("[%d] Responding to request for src:%d idx:%d p:%x cnt:%d done:[%d]\n", io.time, io.d_channel.bits.source, response_status.index, response_status.paddr, response_count, response_done)
   }
 
   /* Get information about the prefetcher */

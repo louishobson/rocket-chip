@@ -802,12 +802,12 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
 
   when(s1_valid) {
     when(ongoing_demand_miss && demand_miss_paddr === io.s1_paddr) {
-      printf("[%d] REQ: BLOCKED BY DEMAND MISS\n", io.time)
+      //printf("[%d] REQ: BLOCKED BY DEMAND MISS\n", io.time)
     } .otherwise {
-      printf("[%d] REQ: v:%x p:%x (idx:%d)\n", io.time, s1_vaddr, io.s1_paddr, s1_vaddr(untagBits-1, blockOffBits))
+      //printf("[%d] REQ: v:%x p:%x (idx:%d)\n", io.time, s1_vaddr, io.s1_paddr, s1_vaddr(untagBits-1, blockOffBits))
     }
   } .otherwise {
-    printf("[%d] REQ: NONE\n", io.time)
+    //printf("[%d] REQ: NONE\n", io.time)
   }
 
   io.perf.acquire := refill_fire
@@ -886,7 +886,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     mshr.io.prefetch_req.bits.cache := false.B
 
     when(prefetcher.io.prefetch_resp.valid) {
-      printf("[%d] Valid prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr)
+      //printf("[%d] Valid prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr)
     }
 
     /* When we have a prefetch in stage 1... */
@@ -905,16 +905,16 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     }
 
     when(prefetch_handled && !mshr.io.prefetch_req.fire()) {
-      printf("[%d] Dropping prefetch for idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
+      //printf("[%d] Dropping prefetch for idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
     }
     when(mshr.io.prefetch_req.fire()) {
-      printf("[%d] Passing prefetch to MSHR idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
+      //printf("[%d] Passing prefetch to MSHR idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
     }
     when(prefetcher.io.prefetch_resp.fire()) {
       when(prefetch_fire) {
-        printf("[%d] Consuming prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
+        //printf("[%d] Consuming prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
       } .otherwise {
-        printf("[%d] Consuming but immediately dropping prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
+        //printf("[%d] Consuming but immediately dropping prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
       }
     }
     

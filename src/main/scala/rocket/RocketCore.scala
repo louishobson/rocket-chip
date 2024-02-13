@@ -1058,11 +1058,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
          Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1val, 0.U),
          coreMonitorBundle.inst, coreMonitorBundle.inst)
         */
-        /*
         printf("%d [%d] pc=[%x] DASM(%x)\n",
          coreMonitorBundle.timer, coreMonitorBundle.valid,
          coreMonitorBundle.pc,coreMonitorBundle.inst)
-         */
     }
   }
 
