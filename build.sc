@@ -190,7 +190,7 @@ trait Emulator extends Cross.Module2[String, String] {
 
     def CMakeListsString = T {
       // format: off
-      s"""cmake_minimum_required(VERSION 3.20)
+      s"""cmake_minimum_required(VERSION 3.16.3)
          |project(emulator)
          |include_directories(${csrcDir().path})
          |# plusarg is here
