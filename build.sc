@@ -254,7 +254,7 @@ trait Emulator extends Cross.Module2[String, String] {
         "--build-jobs", "9",
         "--threads 6",
         "-O2", "-fno-table",
-        //"--noassert",
+        "--noassert",
         "--j", "9",
         s"-I${vsrcDir().path}",
         // format: on

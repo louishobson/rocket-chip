@@ -360,12 +360,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   val s2_vaddr = RegNext(s1_vaddr)
   val s2_paddr = RegNext(io.s1_paddr)
 
-  when(s1_valid) {
-    printf("[%d] REQ: v:%x p:%x (idx:%d)\n", io.time, s1_vaddr, io.s1_paddr, s1_vaddr(untagBits-1, blockOffBits))
-  } .otherwise {
-    printf("[%d] REQ: NONE\n", io.time)
-  }
-
   /* Create the MSHR */
   val mshr = Module(new IMSHR(edge_out))
 
@@ -380,19 +374,18 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   /** status register to indicate a cache flush. */
   val invalidated = Reg(Bool())
   val ongoing_demand_miss = RegInit(false.B)
+  val demand_miss_paddr = Reg(UInt(paddrBits.W))
   /** indicate [[tl_out]] is performing a refill. */
   val refill_fire = tl_out.a.fire
   /** [[io]] access L1 I$ miss. */
   val s2_miss = s2_valid && !s2_hit && !io.s2_kill
   /** forward signal to stage 1, permit stage 1 refill. */
-  val s1_can_request_refill = !(s2_miss || ongoing_demand_miss)
+  val s1_can_request_refill = !s2_miss
   /** real refill signal, stage 2 miss, and was permit to refill in stage 1.
     * Since a miss will trigger burst.
-    * miss under miss won't trigger another burst.
+    * miss under miss won't trigger another burst.5
     */
   val s2_request_refill = s2_miss && RegNext(s1_can_request_refill)
-  val demand_miss_paddr = RegEnable((io.s1_paddr >> blockOffBits) << blockOffBits, s1_valid && s1_can_request_refill)
-  val demand_miss_index = RegEnable(s1_vaddr(untagBits-1,blockOffBits), s1_valid && s1_can_request_refill)
   val refill_paddr = mshr.io.resp.bits.paddr // RegEnable(io.s1_paddr, s1_valid && s1_can_request_refill)
   val refill_tag = refill_paddr >> pgUntagBits
   val refill_idx = mshr.io.resp.bits.index
@@ -412,7 +405,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   require (edge_out.manager.minLatency > 0)
 
   /** block request from CPU when refill or scratch pad access. */
-  io.req.ready := !(s0_slaveValid || s3_slaveValid) && (!mshr.io.resp.valid || refill_idx =/= s0_vaddr(untagBits-1,blockOffBits)) && (!ongoing_demand_miss || s0_vaddr(untagBits-1,blockOffBits) =/= demand_miss_index)
+  io.req.ready := !(s0_slaveValid || s3_slaveValid) && (!mshr.io.resp.valid || refill_idx =/= s0_vaddr(untagBits-1,blockOffBits))
 
   /** way to be replaced, implemented with a hardcoded random replacement algorithm */
   val repl_way = if (isDM) 0.U else {
@@ -801,8 +794,21 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
 
   // if there is an outstanding refill, cannot flush I$.
   when (!mshr.io.resp.valid) { invalidated := false.B }
-  when (mshr.io.demand_req.fire) { ongoing_demand_miss := true.B }
   when (refill_done && refill_paddr === demand_miss_paddr) { ongoing_demand_miss := false.B }
+  when (mshr.io.demand_req.fire) { 
+    ongoing_demand_miss := true.B
+    demand_miss_paddr := mshr.io.demand_req.bits.paddr 
+  }
+
+  when(s1_valid) {
+    when(ongoing_demand_miss && demand_miss_paddr === io.s1_paddr) {
+      //printf("[%d] REQ: BLOCKED BY DEMAND MISS\n", io.time)
+    } .otherwise {
+      //printf("[%d] REQ: v:%x p:%x (idx:%d)\n", io.time, s1_vaddr, io.s1_paddr, s1_vaddr(untagBits-1, blockOffBits))
+    }
+  } .otherwise {
+    //printf("[%d] REQ: NONE\n", io.time)
+  }
 
   io.perf.acquire := refill_fire
   // don't gate I$ clock since there are outstanding transcations.
@@ -880,7 +886,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     mshr.io.prefetch_req.bits.cache := false.B
 
     when(prefetcher.io.prefetch_resp.valid) {
-      printf("[%d] Valid prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr)
+      //printf("[%d] Valid prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr)
     }
 
     /* When we have a prefetch in stage 1... */
@@ -899,16 +905,16 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     }
 
     when(prefetch_handled && !mshr.io.prefetch_req.fire()) {
-      printf("[%d] Dropping prefetch for idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
+      //printf("[%d] Dropping prefetch for idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
     }
     when(mshr.io.prefetch_req.fire()) {
-      printf("[%d] Passing prefetch to MSHR idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
+      //printf("[%d] Passing prefetch to MSHR idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
     }
     when(prefetcher.io.prefetch_resp.fire()) {
       when(prefetch_fire) {
-        printf("[%d] Consuming prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
+        //printf("[%d] Consuming prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
       } .otherwise {
-        printf("[%d] Consuming but immediately dropping prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
+        //printf("[%d] Consuming but immediately dropping prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
       }
     }
     

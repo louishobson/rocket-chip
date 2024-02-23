@@ -82,9 +82,9 @@ case class HierarchicalBusTopologyParams(
     (FBUS, fbus),
     (CBUS, cbus)),
   connections = List(
-    (SBUS, CBUS, TLBusWrapperConnection  .crossTo(xTypes.sbusToCbusXType, if (driveClocksFromSBus) Some(true) else None)),
-    (CBUS, PBUS, TLBusWrapperConnection  .crossTo(xTypes.cbusToPbusXType, if (driveClocksFromSBus) Some(true) else None)),
-    (FBUS, SBUS, TLBusWrapperConnection.crossFrom(xTypes.fbusToSbusXType, if (driveClocksFromSBus) Some(false) else None)))
+    (SBUS, CBUS, TLBusWrapperConnection  .crossTo(xTypes.sbusToCbusXType, if (driveClocksFromSBus) Some(true) else None, inject = (p => TLLatencyController(cbus.latency)(p)))),
+    (CBUS, PBUS, TLBusWrapperConnection  .crossTo(xTypes.cbusToPbusXType, if (driveClocksFromSBus) Some(true) else None, inject = (p => TLLatencyController(pbus.latency)(p)))),
+    (FBUS, SBUS, TLBusWrapperConnection.crossFrom(xTypes.fbusToSbusXType, if (driveClocksFromSBus) Some(false) else None, inject = (p => TLLatencyController(fbus.latency)(p)))))
 )
 
 /** Parameterization of a topology containing a banked coherence manager and a bus for attaching memory devices. */
@@ -99,10 +99,11 @@ case class CoherentBusTopologyParams(
     (MBUS, mbus),
     (L2, CoherenceManagerWrapperParams(mbus.blockBytes, mbus.beatBytes, l2.nBanks, L2.name, sbus.dtsFrequency)(l2.coherenceManager)))),
   connections = if (l2.nBanks == 0) Nil else List(
-    (SBUS, L2,   TLBusWrapperConnection(driveClockFromMaster = Some(true), nodeBinding = BIND_STAR)()),
+    (SBUS, L2,   TLBusWrapperConnection(driveClockFromMaster = Some(true), nodeBinding = BIND_STAR)(inject = (p => TLLatencyController(l2.latency)(p)))),
     (L2,  MBUS,  TLBusWrapperConnection.crossTo(
       xType = sbusToMbusXType,
       driveClockFromMaster = if (driveMBusClockFromSBus) Some(true) else None,
-      nodeBinding = BIND_QUERY))
+      nodeBinding = BIND_QUERY,
+      inject = (p => TLLatencyController(mbus.latency)(p))))
   )
 )

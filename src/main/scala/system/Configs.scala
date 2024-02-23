@@ -5,6 +5,7 @@ package freechips.rocketchip.system
 
 import org.chipsalliance.cde.config.Config
 import freechips.rocketchip.subsystem._
+import freechips.rocketchip.tilelink.TLLatencies
 
 class WithJtagDTMSystem extends freechips.rocketchip.subsystem.WithJtagDTM
 class WithDebugSBASystem extends freechips.rocketchip.subsystem.WithDebugSBA
@@ -20,7 +21,20 @@ class BaseConfig extends Config(
   new BaseSubsystemConfig
 )
 
-class DefaultConfig extends Config(new WithL1ICacheWays(2) ++ new WithL1ICacheSets(32) ++ new WithNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
+class DefaultConfig extends Config(
+  new WithoutTLMonitors ++
+  new WithInclusiveCache(outerLatencyCycles = 50, nWays = 4, capacityKB = 128) ++
+  new WithL2Latency(TLLatencies.block(10)) ++
+  //new WithFrontBusLatency(new TLLatencies(10, 10, 10, 0, 10)) ++
+  new WithControlBusLatency(TLLatencies.block(10)) ++
+  new WithMemoryBusLatency(TLLatencies.queue(50)) ++
+  new WithL1ICacheWays(2) ++ 
+  new WithL1ICacheSets(32) ++ 
+  //new WithNBigCores(1) ++ 
+  new WithNMedCores(1) ++
+  new WithCoherentBusTopology ++ 
+  new BaseConfig
+)
 
 class EntanglingIPrefetcherConfig extends Config(new WithEntanglingIPrefetcher ++ new DefaultConfig)
 

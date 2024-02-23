@@ -10,6 +10,7 @@ import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tile._
+import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 
 class BaseSubsystemConfig extends Config ((site, here, up) => {
@@ -677,6 +678,22 @@ class WithFrontBusFrequency(freqMHz: Double) extends Config((site, here, up) => 
 })
 class WithControlBusFrequency(freqMHz: Double) extends Config((site, here, up) => {
   case ControlBusKey => up(ControlBusKey, site).copy(dtsFrequency = Some(BigInt((freqMHz * 1e6).round)))
+})
+
+class WithPeripheryBusLatency(latency: TLLatencies) extends Config((site, here, up) => {
+  case PeripheryBusKey => up(PeripheryBusKey, site).copy(latency = Some(latency))
+})
+class WithMemoryBusLatency(latency: TLLatencies) extends Config((site, here, up) => {
+  case MemoryBusKey => up(MemoryBusKey, site).copy(latency = Some(latency))
+})
+class WithL2Latency(latency: TLLatencies) extends Config((site, here, up) => {
+  case BankedL2Key => up(BankedL2Key, site).copy(latency = Some(latency))
+})
+class WithFrontBusLatency(latency: TLLatencies) extends Config((site, here, up) => {
+  case FrontBusKey => up(FrontBusKey, site).copy(latency = Some(latency))
+})
+class WithControlBusLatency(latency: TLLatencies) extends Config((site, here, up) => {
+  case ControlBusKey => up(ControlBusKey, site).copy(latency = Some(latency))
 })
 
 /** Under the default multi-bus topologies, this leaves bus ClockSinks undriven by the topology itself */

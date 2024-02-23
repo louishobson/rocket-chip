@@ -119,9 +119,11 @@ object TLBusWrapperConnection {
       xType: ClockCrossingType,
       driveClockFromMaster: Option[Boolean] = Some(true),
       nodeBinding: NodeBinding = BIND_STAR,
-      flipRendering: Boolean = false) = {
+      flipRendering: Boolean = false,
+      inject: Parameters => TLNode = { _ => TLTempNode() }) = {
     apply(xType, driveClockFromMaster, nodeBinding, flipRendering)(
-          slaveNodeView  = { case(w, p) => w.crossInHelper(xType)(p) })
+          slaveNodeView  = { case(w, p) => w.crossInHelper(xType)(p) },
+          inject = inject)
   }
 
   /** Backwards compatibility factory for slave driving clock and master setting cardinality */
@@ -129,9 +131,11 @@ object TLBusWrapperConnection {
       xType: ClockCrossingType,
       driveClockFromMaster: Option[Boolean] = Some(false),
       nodeBinding: NodeBinding = BIND_QUERY,
-      flipRendering: Boolean = true) = {
+      flipRendering: Boolean = true,
+      inject: Parameters => TLNode = { _ => TLTempNode() }) = {
     apply(xType, driveClockFromMaster, nodeBinding, flipRendering)(
-          masterNodeView  = { case(w, p) => w.crossOutHelper(xType)(p) })
+          masterNodeView  = { case(w, p) => w.crossOutHelper(xType)(p) },
+          inject = inject)
   }
 
   /** Factory for making generic connections between TLBusWrappers */

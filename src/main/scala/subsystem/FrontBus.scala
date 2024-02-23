@@ -13,7 +13,8 @@ case class FrontBusParams(
     blockBytes: Int,
     dtsFrequency: Option[BigInt] = None,
     zeroDevice: Option[BuiltInZeroDeviceParams] = None,
-    errorDevice: Option[BuiltInErrorDeviceParams] = None)
+    errorDevice: Option[BuiltInErrorDeviceParams] = None,
+    latency: Option[TLLatencies] = None)
   extends HasTLBusParams
   with HasBuiltInDeviceParams
   with TLBusWrapperInstantiationLike
