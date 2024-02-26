@@ -219,7 +219,6 @@ class ICacheBundle(val outer: ICache) extends CoreBundle()(outer.p) {
   val s2_kill = Input(Bool()) // delayed two cycles; prevents I$ miss emission
   val s2_cacheable = Input(Bool()) // should L2 cache line on a miss?
   val s2_prefetch = Input(Bool()) // should I$ prefetch next line on a miss?
-  val time = Input(UInt(64.W))
   /** response to CPU. */
   val resp = Valid(new ICacheResp(outer))
 
@@ -363,9 +362,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   /* Create the MSHR */
   val mshr = Module(new IMSHR(edge_out))
 
-  /* Link up the prefetch hinting wire and time IO */
+  /* Link up the prefetch hinting wire */
   mshr.io.soft_prefetch := io.s2_prefetch
-  mshr.io.time := io.time
 
   /* Connect the TL channels to the MSHR */
   mshr.io.a_channel <> tl_out.a
@@ -800,16 +798,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     demand_miss_paddr := mshr.io.demand_req.bits.paddr 
   }
 
-  when(s1_valid) {
-    when(ongoing_demand_miss && demand_miss_paddr === io.s1_paddr) {
-      //printf("[%d] REQ: BLOCKED BY DEMAND MISS\n", io.time)
-    } .otherwise {
-      //printf("[%d] REQ: v:%x p:%x (idx:%d)\n", io.time, s1_vaddr, io.s1_paddr, s1_vaddr(untagBits-1, blockOffBits))
-    }
-  } .otherwise {
-    //printf("[%d] REQ: NONE\n", io.time)
-  }
-
   io.perf.acquire := refill_fire
   // don't gate I$ clock since there are outstanding transcations.
   io.keep_clock_enabled :=
@@ -821,9 +809,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
 
     /* Create the prefetcher module */
     val prefetcher = Module(new EntanglingIPrefetcher)
-
-    /* Pass the time onto the prefetcher */
-    prefetcher.io.time := io.time
 
     /* Notify the prefetcher of a fetch when we have a valid request in stage 2 of the pipeline.
      * Choose stage two because this is the latest stage the I$ request could be killed,
@@ -885,10 +870,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     mshr.io.prefetch_req.bits.index := prefetch_s1_reg.index
     mshr.io.prefetch_req.bits.cache := false.B
 
-    when(prefetcher.io.prefetch_resp.valid) {
-      //printf("[%d] Valid prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr)
-    }
-
     /* When we have a prefetch in stage 1... */
     when(prefetch_s1_valid) {
       /* We should drop it if we see a refill for the same paddr occurring */
@@ -903,21 +884,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
         prefetch_handled := mshr.io.prefetch_req.fire()
       } 
     }
-
-    when(prefetch_handled && !mshr.io.prefetch_req.fire()) {
-      //printf("[%d] Dropping prefetch for idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
-    }
-    when(mshr.io.prefetch_req.fire()) {
-      //printf("[%d] Passing prefetch to MSHR idx:%d p:%x\n", io.time, prefetch_s1_reg.index, prefetch_s1_reg.paddr)
-    }
-    when(prefetcher.io.prefetch_resp.fire()) {
-      when(prefetch_fire) {
-        //printf("[%d] Consuming prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
-      } .otherwise {
-        //printf("[%d] Consuming but immediately dropping prefetch for idx:%d p:%x\n", io.time, prefetcher.io.prefetch_resp.bits.index, prefetcher.io.prefetch_resp.bits.paddr) 
-      }
-    }
-    
   } else {
     /* Even when we have no prefetcher, we still need to set the prefetch request IO on the MSHR */
     mshr.io.prefetch_req.valid := false.B

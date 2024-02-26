@@ -917,11 +917,8 @@ class EntanglingIPrefetcherPrefetchResp(implicit p: Parameters) extends CoreBund
 
 /** [[EntanglingIPrefetcher]] implements an entangling instruction prefetcher
   * 
-  * The I$ sends two pieces of information to the prefetcher:
-  *    - The physical addresses that are requested.
-  *      These are used to trigger prefetches, as well as record basic blocks.
-  *    - The address and fetch time for a demand miss.
-  *      This allows the prefetcher to create new entanglings.
+  * The I$ sends addresses (physical and virtual) that are requested by the frontend to the prefetcher.
+  * It also notifies the prefetcher when a cache miss has resolved.
   * 
   * The prefetcher will respond with basic blocks that it thinks should be prefetched.
   */
@@ -932,8 +929,13 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
     val fetch_req = Flipped(Valid(new EntanglingIPrefetcherFetchReq))
     val miss_req = Flipped(Valid(new EntanglingIPrefetcherMissReq))
     val prefetch_resp = Decoupled(new EntanglingIPrefetcherPrefetchResp)
-    val time = Input(UInt(timeBits.W))
   })
+
+
+
+  /* Create a clock to keep track of time between misses */
+  val time = RegInit(0.U(timeBits.W))
+  time := time + 1.U
 
 
 
@@ -946,7 +948,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   bb_counter.io.req.valid := io.fetch_req.valid
   bb_counter.io.req.bits.baddr := fetch_baddr
   bb_counter.io.req.bits.vidx := fetch_vidx
-  bb_counter.io.req.bits.time := io.time
+  bb_counter.io.req.bits.time := time
 
 
 
@@ -968,7 +970,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   assert(!history_buffer.io.search_req.valid || history_buffer.io.search_req.ready)
   history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
   history_buffer.io.search_req.bits.dst := miss_baddr
-  history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (io.time - bb_counter.io.resp.time)
+  history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (time - bb_counter.io.resp.time)
 
 
 

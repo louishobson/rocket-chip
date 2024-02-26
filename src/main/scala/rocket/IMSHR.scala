@@ -39,7 +39,6 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val sending_hint = Output(Bool())
     val hint_outstanding = Output(Bool())
     val soft_prefetch = Input(Bool())
-    val time = Input(UInt(64.W))
   })
 
   /* We are ready for a response when it either had no data, or the I$ is ready */
@@ -98,11 +97,6 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
           status(i).paddr := req.paddr
           status(i).valid := true.B
           status(i).demand := can_accept_demand_req
-          when(can_accept_demand_req) {
-            //printf(s"[%d] Servicing demand request for idx:%d p:%x src:${i}\n", io.time, req.index, req.paddr)
-          } .otherwise {
-            //printf(s"[%d] Servicing prefetch request for idx:%d p:%x src:${i}\n", io.time, req.index, req.paddr)
-          }
         }
       }
     }
@@ -178,10 +172,6 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   io.resp.valid := response_valid || ongoing_burst
   io.resp.bits := Mux(response_valid, response, response_reg)
   io.resp.bits.beat := response_valid
-
-  when(response_fire) {
-    //printf("[%d] Responding to request for src:%d idx:%d p:%x cnt:%d done:[%d]\n", io.time, io.d_channel.bits.source, response_status.index, response_status.paddr, response_count, response_done)
-  }
 
   /* Get information about the prefetcher */
   def entanglingParams = cacheParams.entanglingParams
