@@ -748,3 +748,24 @@ class WithEntanglingIPrefetcherTableSize(nWays: Int, nSets: Int) extends WithTra
 class WithEntanglingIPrefetcherCompressionCfg(entanglingBits: Int, maxEntanglings: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
   entanglingBits = entanglingBits, maxEntanglings = maxEntanglings
 ))
+
+class WithL1ICacheProfiling(enable: Boolean = true)  extends Config((site, here, up) => {
+  case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
+    case tp: RocketTileAttachParams => tp.copy(tileParams = tp.tileParams.copy(
+      icache = tp.tileParams.icache.map(_.copy(enableProfiling = enable))))
+    case t => t
+  }
+})
+
+class WithNPerfCounters(n: Int) extends Config((site, here, up) => {
+  case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
+    case tp: RocketTileAttachParams => tp.copy(
+      tileParams = tp.tileParams.copy(
+        core = tp.tileParams.core.copy(
+          nPerfCounters = n, useUser = true
+        )
+      )
+    )
+    case t => t
+  }
+})

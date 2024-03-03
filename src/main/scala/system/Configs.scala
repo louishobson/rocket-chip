@@ -22,6 +22,8 @@ class BaseConfig extends Config(
 )
 
 class DefaultConfig extends Config(
+  new WithL1ICacheProfiling ++ 
+  new WithNPerfCounters(16) ++
   new WithoutTLMonitors ++
   new WithInclusiveCache(outerLatencyCycles = 50, nWays = 4, capacityKB = 128) ++
   new WithL2Latency(TLLatencies.block(10)) ++

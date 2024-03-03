@@ -179,7 +179,20 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
       ("D$ release", () => io.dmem.perf.release),
       ("ITLB miss", () => io.imem.perf.tlbMiss),
       ("DTLB miss", () => io.dmem.perf.tlbMiss),
-      ("L2 TLB miss", () => io.ptw.perf.l2miss)))))
+      ("L2 TLB miss", () => io.ptw.perf.l2miss)))
+  ) ++ (if (!tileParams.icache.get.enableProfiling) None else Some(
+    new EventSet((mask, hits) => (mask & hits).orR, Seq(
+      ("I$ response",   () => io.imem.icachePerf.get.cache_response),
+      ("I$ miss",       () => io.imem.icachePerf.get.cache_miss),
+      ("Demand refill", () => io.imem.icachePerf.get.demand_refill),
+      ("Prefetch refill", () => io.imem.icachePerf.get.prefetch_refill),
+      ("Prefetch consumed", () => io.imem.icachePerf.get.prefetch_consumed),
+      ("Late prefetch", () => io.imem.icachePerf.get.late_prefetch),
+      ("Early prefetch", () => io.imem.icachePerf.get.early_prefetch),
+      ("No prefetch", () => io.imem.icachePerf.get.no_prefetch),
+      ("Erroneous prefetch", () => io.imem.icachePerf.get.erroneous_prefetch),
+    ))))
+  )
 
   val pipelinedMul = usingMulDiv && mulDivParams.mulUnroll == xLen
   val decode_table = {

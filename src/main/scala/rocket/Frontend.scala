@@ -58,6 +58,7 @@ class FrontendIO(implicit p: Parameters) extends CoreBundle()(p) {
   val flush_icache = Output(Bool())
   val npc = Input(UInt(vaddrBitsExtended.W))
   val perf = Input(new FrontendPerfEvents())
+  val icachePerf = if(tileParams.icache.map(_.enableProfiling).getOrElse(false)) Some(Input(new ICacheExtPerfEvents())) else None
   val progress = Output(Bool())
   val time = Output(UInt(64.W))
 }
@@ -365,6 +366,7 @@ class FrontendModule(outer: Frontend) extends LazyModuleImp(outer)
   io.cpu.perf.acquire := icache.io.perf.acquire
   io.cpu.perf.tlbMiss := io.ptw.req.fire
   io.errors := icache.io.errors
+  io.cpu.icachePerf.foreach(_ := icache.io.extPerf.get)
 
   // gate the clock
   clock_en_reg := !rocketParams.clockGate.B ||

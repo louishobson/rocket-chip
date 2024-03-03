@@ -51,7 +51,8 @@ case class ICacheParams(
   blockBytes: Int = 64,
   latency: Int = 2,
   fetchBytes: Int = 4,
-  entanglingParams: Option[EntanglingIPrefetcherParams] = None
+  entanglingParams: Option[EntanglingIPrefetcherParams] = None,
+  enableProfiling: Boolean = false, 
 ) extends L1CacheParams {
   def tagCode: Code = Code.fromString(tagECC)
   def dataCode: Code = Code.fromString(dataECC)
@@ -209,6 +210,18 @@ class ICachePerfEvents extends Bundle {
   val acquire = Bool()
 }
 
+class ICacheExtPerfEvents extends Bundle {
+  val cache_response = Bool()
+  val cache_miss = Bool()
+  val demand_refill = Bool()
+  val prefetch_refill = Bool()
+  val prefetch_consumed = Bool()
+  val late_prefetch = Bool()
+  val early_prefetch = Bool()
+  val no_prefetch = Bool()
+  val erroneous_prefetch = Bool()
+}
+
 /** IO from CPU to ICache. */
 class ICacheBundle(val outer: ICache) extends CoreBundle()(outer.p) {
   /** first cycle requested from CPU. */
@@ -234,6 +247,7 @@ class ICacheBundle(val outer: ICache) extends CoreBundle()(outer.p) {
 
   /** for performance counting. */
   val perf = Output(new ICachePerfEvents())
+  val extPerf = if (outer.icacheParams.enableProfiling) Some(Output(new ICacheExtPerfEvents)) else None
 
   /** enable clock. */
   val clock_enabled = Input(Bool())
@@ -373,6 +387,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   val invalidated = Reg(Bool())
   val ongoing_demand_miss = RegInit(false.B)
   val demand_miss_paddr = Reg(UInt(paddrBits.W))
+  val demand_miss_index = Reg(UInt(idxBits.W))
   /** indicate [[tl_out]] is performing a refill. */
   val refill_fire = tl_out.a.fire
   /** [[io]] access L1 I$ miss. */
@@ -796,6 +811,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   when (mshr.io.demand_req.fire) { 
     ongoing_demand_miss := true.B
     demand_miss_paddr := mshr.io.demand_req.bits.paddr 
+    demand_miss_index := mshr.io.demand_req.bits.index 
   }
 
   io.perf.acquire := refill_fire
@@ -884,7 +900,124 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
         prefetch_handled := mshr.io.prefetch_req.fire()
       } 
     }
+
+
+
+    /* Setup prefetcher profiling */
+    if(cacheParams.enableProfiling) {
+
+      /* Create history buffer for cache misses */
+      val miss_history = Module(new GenericHistoryBuffer(UInt(paddrBits.W), cacheParams.entanglingParams.get.profilingHistBufLen))
+
+      /* Create history buffer for evicted prefetches */
+      val evicted_prefetch_history = Module(new GenericHistoryBuffer(UInt(paddrBits.W), cacheParams.entanglingParams.get.profilingHistBufLen))
+
+      /* Create two arrays of bits to know when the cache line was inserted by a demand request and whether it has been accessed */
+      val demand_array = RegInit(0.U((nSets*nWays).W))
+      val access_array = RegInit(0.U((nSets*nWays).W))
+
+      /* Insert into the miss history buffer on a demand miss.
+       * Also check the evicted prefetch history to see if an early prefetch was made.
+       */
+      when(s2_valid && !s2_hit) {
+        /* Insert into the miss history buffer */
+        miss_history.io.insert.valid := true.B
+        miss_history.io.insert.bits := s2_paddr
+
+        /* Look at the evicted prefetch history */
+        evicted_prefetch_history.io.query.valid := true.B
+        evicted_prefetch_history.io.query.bits := s2_paddr
+
+        /* !! EARLY PREFETCH !! We have an early prefetch if we have a hit in the evicted prefetch history */
+        io.extPerf.get.early_prefetch := evicted_prefetch_history.io.query_result
+      } .otherwise {
+        /* Tie off the performance monitoring */
+        io.extPerf.get.early_prefetch := false.B
+
+        /* Tie off the miss history buffer insert input */
+        miss_history.io.insert.valid := false.B
+        miss_history.io.insert.bits := DontCare
+
+        /* Tie off the evicted prefetch history buffer query input */
+        evicted_prefetch_history.io.query.valid := false.B
+        evicted_prefetch_history.io.query.bits := DontCare
+      }
+
+      /* Read the paddr of the cache line we are refilling when we start refilling
+       * We can't do this on the last beat because of the read/write conflict.
+       */
+      val refill_victim_enc_tag = tag_array.readAndHold(refill_idx, refill_one_beat && refill_cnt === 0.U)
+      val refill_victim_tag = tECC.decode(refill_victim_enc_tag(repl_way)).uncorrected(tagBits-1,0)
+
+      /* Detect the end of a refill and set the bits in the access/prefetch arrays.
+       * Also see if we just evicted an unused, prefetched entry.
+       */
+      when(refill_done) {
+        /* Get the index to look in */
+        val array_idx = repl_way ## refill_idx
+
+        /* Set the new array values */
+        access_array := access_array.bitSet(array_idx, false.B)
+        demand_array := demand_array.bitSet(array_idx, mshr.io.resp.bits.demand)
+
+        /* Look to see if we evicted an unused, prefetched cache line.
+         * If so, add it to the evicted prefetch buffer.
+         */
+        evicted_prefetch_history.io.insert.valid := vb_array(array_idx) && !access_array(array_idx) && !demand_array(array_idx)
+        evicted_prefetch_history.io.insert.bits := refill_victim_tag ## (refill_idx << blockOffBits)(pgUntagBits-1,0)
+      } .otherwise {
+        /* Tie of evicted prefetch history buffer insertion IO */
+        evicted_prefetch_history.io.insert.valid := false.B
+        evicted_prefetch_history.io.insert.bits := DontCare
+      }
+
+      /* Mark access to a cache line */
+      when(s2_valid && s2_hit) {
+        access_array := access_array.bitSet(s2_hit_way ## s2_vaddr(untagBits-1,blockOffBits), true.B)
+      }
+
+      /* When a prefetch request is processed, see whether it was late by querying the miss history buffer */
+      when(prefetcher.io.prefetch_resp.fire()) {
+        /* !! PREFETCH CONSUMED !!  Print that a prefetch is being consumed */
+        io.extPerf.get.prefetch_consumed := true.B
+
+        /* Check the miss history buffer */
+        miss_history.io.query.valid := true.B
+        miss_history.io.query.bits := prefetcher.io.prefetch_resp.bits.paddr
+
+        /* We have a late prefetch when we have a hit in the miss history buffer */
+        io.extPerf.get.late_prefetch := miss_history.io.query_result
+      } .otherwise {
+        /* Tie off the performance monitors */
+        io.extPerf.get.prefetch_consumed := false.B
+        io.extPerf.get.late_prefetch := false.B
+
+        /* Tie off the query IO of the miss history buffer */
+        miss_history.io.query.valid := false.B
+        miss_history.io.query.bits := DontCare
+      }
+
+      /* !! NO PREFETCH !! 
+       * Report a missing prefetch when a valid miss is evicted from the history.
+       */
+      io.extPerf.get.no_prefetch := miss_history.io.evicted.valid
+
+      /* !! ERRONEOUS PREFETCH !! 
+       * Report an erroneous prefetch when an evicted prefetch is also evicted from the history.
+       */
+      io.extPerf.get.erroneous_prefetch := evicted_prefetch_history.io.evicted.valid
+    }
+
+
+
   } else {
+    /* Tie-off prefetcher performance monitoring */
+    io.extPerf.get.prefetch_consumed := false.B
+    io.extPerf.get.late_prefetch := false.B
+    io.extPerf.get.early_prefetch := false.B
+    io.extPerf.get.no_prefetch := false.B
+    io.extPerf.get.erroneous_prefetch := false.B
+
     /* Even when we have no prefetcher, we still need to set the prefetch request IO on the MSHR */
     mshr.io.prefetch_req.valid := false.B
     mshr.io.prefetch_req.bits := DontCare
@@ -893,6 +1026,23 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     prefetch_fire := false.B
     prefetch_idx := DontCare
   }
+
+
+
+  /* Setup non-prefetcher profiling */
+  if(cacheParams.enableProfiling) {
+    /* !! CACHE RESPONSE !! Report on an I$ response */
+    io.extPerf.get.cache_response := io.resp.valid
+
+    /* !! CACHE MISS !! Report when a cache miss happens */
+    io.extPerf.get.cache_miss := s2_miss && !(ongoing_demand_miss && s2_vaddr(untagBits-1,blockOffBits) === demand_miss_index)
+
+    /* Report when a refill occurs and its type */
+    io.extPerf.get.demand_refill := refill_done && mshr.io.resp.bits.demand
+    io.extPerf.get.prefetch_refill := refill_done && !mshr.io.resp.bits.demand
+  }
+
+
 
   /** index to access [[data_arrays]] and [[tag_array]].
     * @note
@@ -955,4 +1105,5 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     "MemorySystem;;Memory Bit Flip Cross Covers")
 
   property.cover(error_cross_covers)
+
 }

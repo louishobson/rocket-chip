@@ -42,7 +42,9 @@ case class EntanglingIPrefetcherParams(
   /* The number of bits used to store entanglings */
   entanglingBits: Int = 63,
   /* The maximum number of entanglings which can be stored in entanglingBits */
-  maxEntanglings: Int = 6
+  maxEntanglings: Int = 6,
+  /* Settings for profiling */
+  profilingHistBufLen: Int = 8
 )
 
 /** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams
