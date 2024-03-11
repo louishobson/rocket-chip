@@ -41,7 +41,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val soft_prefetch = Input(Bool())
   })
 
-  /* We are ready for a response when it either had no data, or the I$ is ready */
+  /* We are ready for a response when it either had no data (meaning it is a hint response), or the I$ is ready */
   io.d_channel.ready := !edge.hasData(io.d_channel.bits) || io.resp.ready
 
   /* Define the status registers */
@@ -201,7 +201,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     bits
   }
 
-  /* Make a hint request to the L" memory */
+  /* Make a hint request to the L2 memory */
   def createHintRequest(paddr: UInt, next_block: UInt) = edge.Hint(
     fromSource = 1.U,
     toAddress = ((paddr >> pgIdxBits) ## next_block) << blockOffBits,
