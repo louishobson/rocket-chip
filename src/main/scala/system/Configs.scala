@@ -29,7 +29,7 @@ class DefaultConfig extends Config(
   new WithL2Latency(TLLatencies.block(10)) ++
   //new WithFrontBusLatency(new TLLatencies(10, 10, 10, 0, 10)) ++
   new WithControlBusLatency(TLLatencies.block(10)) ++
-  new WithMemoryBusLatency(TLLatencies.queue(50)) ++
+  new WithMemoryBusLatency(TLLatencies.queue(50, 5)) ++
   new WithL1ICacheWays(2) ++ 
   new WithL1ICacheSets(32) ++ 
   //new WithNBigCores(1) ++ 

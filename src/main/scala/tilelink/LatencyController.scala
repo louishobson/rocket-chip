@@ -12,19 +12,16 @@ import org.chipsalliance.cde.config.Parameters
 
 /** [[TLLatencies]] latency parameters for different message types */
 case class TLLatencies(
-  putLatency: Int,
-  getLatency: Int,
-  atomicLatency: Int,
-  hintLatency: Int,
-  transferLatency: Int,
-  asQueue: Boolean = false
+  latency: Int,
+  asQueue: Boolean = false,
+  queuePacketPeriod: Int = 1,
 )
 object TLLatencies {
   /** Create latency parameters for a blocking controller */
-  def block(latency: Int) = TLLatencies(putLatency = latency, getLatency = latency, atomicLatency = latency, hintLatency = latency, transferLatency = latency, asQueue = false)
+  def block(latency: Int) = TLLatencies(latency, asQueue = false)
 
   /** Create latency parameters for a queuing controller */
-  def queue(latency: Int) = TLLatencies(putLatency = latency, getLatency = latency, atomicLatency = latency, hintLatency = latency, transferLatency = latency, asQueue = true)
+  def queue(latency: Int, queuePacketPeriod: Int = 1) = TLLatencies(latency, asQueue = true, queuePacketPeriod = queuePacketPeriod)
 }
 
 
@@ -32,14 +29,15 @@ object TLLatencies {
 /** [[TLLatencyController]] a TL adapter node in order to enforce minimum latencies on different message types */
 class TLLatencyController(q: TLLatencies)(implicit p: Parameters) extends LazyModule
 {
+
+  /* Assert that the latency is positive */
+  assert(q.latency >= 0)
+
   /* Create a TileLink adapter node (this node) */
   val node = TLAdapterNode()
 
   /* Instantiate the lazy module implementation */
   lazy val module = new Impl
-
-  /* Get the maximum latency */
-  val maxLatency = q.putLatency max q.getLatency max q.atomicLatency max q.hintLatency max q.transferLatency
 
   /* Define the lazy module implementation */
   class Impl extends LazyModuleImp(this) {
@@ -58,17 +56,42 @@ class TLLatencyController(q: TLLatencies)(implicit p: Parameters) extends LazyMo
       /* Branch depending on the implementation */
       if(q.asQueue) {
 
-        /* Assert all latencies are equal */
-        assert(q.putLatency == q.getLatency && q.getLatency == q.atomicLatency && q.atomicLatency == q.hintLatency && q.hintLatency == q.transferLatency)
+        /* Assert that the queue packet period is a factor of the latency */
+        assert(q.queuePacketPeriod >= 1 && q.latency % q.queuePacketPeriod == 0)
 
-        /* Add a queue on the D channel */
-        in.d :<>= LatencyPipe(out.d, maxLatency)
+        /* We can create simpler logic if there is no packet period */
+        if (q.queuePacketPeriod == 1) {
+
+          /* Add a queue on the D channel */
+          in.d :<>= LatencyPipe(out.d, q.latency / q.queuePacketPeriod)  
+
+        } else { 
+
+          /* Add a counter to reduce throughput */
+          val queue_period_cnt = RegInit(0.U(log2Up(q.queuePacketPeriod).W))
+
+          /* Block the D channnel while the timer is non-0 */
+          val out_d_gated = Wire(chiselTypeOf(out.d))
+          out_d_gated.valid := out.d.valid && queue_period_cnt === 0.U
+          out.d.ready := out_d_gated.ready && queue_period_cnt === 0.U
+          out_d_gated.bits := out.d.bits
+
+          /* Reset the counter on on transfer, otherwise decrement it */
+          when(out_d_gated.fire) {
+            queue_period_cnt := (q.queuePacketPeriod-1).U
+          } .elsewhen(queue_period_cnt =/= 0.U) {
+            queue_period_cnt := queue_period_cnt - 1.U
+          }        
+
+          /* Add a queue on the D channel */
+          in.d :<>= LatencyPipe(out_d_gated, q.latency / q.queuePacketPeriod)  
+        }
 
       } else {
 
         /* Define registers to store timestamps requests for the A-channel.
         * These are decremented on each cycle. */
-        val a_channel_ts = RegInit(VecInit(Seq.fill(endSourceId)(0.U(log2Up(maxLatency+1).W))))
+        val a_channel_ts = RegInit(VecInit(Seq.fill(endSourceId)(0.U(log2Up(q.latency+1).W))))
         a_channel_ts.foreach(ts => when(ts =/= 0.U) { ts := ts - 1.U })
 
         /* Define a feed function for A channel requests and D channel responses. Given:
@@ -92,17 +115,17 @@ class TLLatencyController(q: TLLatencies)(implicit p: Parameters) extends LazyMo
 
         /* Feed the A channel */
         if(edgeOut.slave.anySupportGet) 
-          feedA(TLMessages.Get, TLMessages.AccessAckData, q.getLatency)
+          feedA(TLMessages.Get, TLMessages.AccessAckData, q.latency)
         if(edgeOut.slave.anySupportPutFull) 
-          feedA(TLMessages.PutFullData, TLMessages.AccessAck, q.putLatency)
+          feedA(TLMessages.PutFullData, TLMessages.AccessAck, q.latency)
         if(edgeOut.slave.anySupportPutPartial) 
-          feedA(TLMessages.PutPartialData, TLMessages.AccessAck, q.putLatency)
+          feedA(TLMessages.PutPartialData, TLMessages.AccessAck, q.latency)
         if(edgeOut.slave.anySupportArithmetic) 
-          feedA(TLMessages.ArithmeticData, TLMessages.AccessAckData, q.getLatency)
+          feedA(TLMessages.ArithmeticData, TLMessages.AccessAckData, q.latency)
         if(edgeOut.slave.anySupportLogical) 
-          feedA(TLMessages.LogicalData, TLMessages.AccessAckData, q.getLatency)
+          feedA(TLMessages.LogicalData, TLMessages.AccessAckData, q.latency)
         if(edgeOut.slave.anySupportHint) 
-          feedA(TLMessages.Hint, TLMessages.HintAck, q.getLatency)
+          feedA(TLMessages.Hint, TLMessages.HintAck, q.latency)
       }
     }    
   }
@@ -112,9 +135,9 @@ class TLLatencyController(q: TLLatencies)(implicit p: Parameters) extends LazyMo
 
 /** [[TLLatencyController]] constructs a LatencyController */
 object TLLatencyController {
-  /** Create a TLLatencyController with constant latency for all options */
-  def apply(q: Int)(implicit p: Parameters): TLNode = apply(TLLatencies(
-      putLatency = q, getLatency = q, atomicLatency = q, hintLatency = q, transferLatency = q))
+  /** Create a TLLatencyController with specific parameters */
+  def apply(latency: Int, asQueue: Boolean = false, queuePacketPeriod: Int = 1)(implicit p: Parameters): TLNode = 
+    apply(TLLatencies(latency, asQueue, queuePacketPeriod))
 
   /** Maybe create a TLLatencyController */
   def apply(q: Option[TLLatencies])(implicit p: Parameters): TLNode =
