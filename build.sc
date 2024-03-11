@@ -248,15 +248,14 @@ trait Emulator extends Cross.Module2[String, String] {
         """+define+PRINTF_COND=\$c\(\"verbose\",\"&&\",\"done_reset\"\)""",
         """+define+STOP_COND=\$c\(\"done_reset\"\)""",
         "+define+RANDOMIZE_GARBAGE_ASSIGN",
-        "--output-split 20000",
-        "--output-split-cfuncs 20000",
+        "--output-split 0",
+        //"--output-split-cfuncs 1000000",
         "--max-num-width 1048576",
-        "--build-jobs", "9",
-        "--threads 6",
+        "--threads 5",
         "-O2", "-fno-table",
-        "--noassert",
-        "--j", "9",
+        //"--noassert",
         s"-I${vsrcDir().path}",
+        "-j 2",
         // format: on
       )
     }

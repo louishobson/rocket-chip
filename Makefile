@@ -8,7 +8,7 @@ CONFIG_FULL ?= $(PROJECT).$(CONFIG)
 TEST_PROJECT ?= freechips.rocketchip.tiletest
 TEST_CONFIG ?= EntanglingIPrefetcherUnitTestConfig
 TEST_CONFIG_FULL ?= $(TEST_PROJECT).$(TEST_CONFIG)
-MILL ?= mill
+MILL ?= mill --no-server 
 RUN ?= scratch/hello_world
 
 RISCV_CC := $(RISCV)/bin/riscv64-unknown-elf-gcc
@@ -17,10 +17,10 @@ RISCV_CARGS := -O0
 
 
 bloop:
-	mill --import "ivy:com.lihaoyi::mill-contrib-bloop::" mill.contrib.Bloop/install
+	$(MILL) --import ivy:com.lihaoyi::mill-contrib-bloop:  mill.contrib.bloop.Bloop/install
 
 bsp: bloop
-	mill mill.bsp.BSP/install
+	$(MILL) mill.bsp.BSP/install
 	[ -f .bsp/mill-bsp.json ] && echo '{"name":"mill-bsp","argv":["/usr/bin/nix","develop","-c","mill","--bsp","--disable-ticker","--color","false","--jobs","1"],"millVersion":"0.10.9","bspVersion":"2.0.0","languages":["scala","java"]}' > .bsp/mill-bsp.json
 
 
@@ -40,10 +40,10 @@ test.run: test.elf
 
 
 vsim:
-	mill emulator[$(PROJECT).TestHarness,$(CONFIG_FULL)].elf
+	$(MILL) emulator[$(PROJECT).TestHarness,$(CONFIG_FULL)].elf
 
 vsim.trace:
-	mill emulator[$(PROJECT).TestHarness,$(CONFIG_FULL)].elf_trace
+	$(MILL) emulator[$(PROJECT).TestHarness,$(CONFIG_FULL)].elf_trace
 
 
 
@@ -53,11 +53,13 @@ vsim.trace:
 %.riscv: %.riscv.o
 	$(RISCV_CC) $< -o $@
 
-run: vsim $(RUN).riscv
+run_no_comp: $(RUN).riscv
 	$(base_dir)/out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator \
 	+verbose \
 	pk $(RUN).riscv \
 	2>&1 | spike-dasm > $(RUN).log
+
+run: vsim run_no_comp
 
 run.trace: vsim.trace $(RUN).riscv
 	$(base_dir)/out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator \
