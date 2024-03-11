@@ -749,10 +749,16 @@ class WithEntanglingIPrefetcherCompressionCfg(entanglingBits: Int, maxEntangling
   entanglingBits = entanglingBits, maxEntanglings = maxEntanglings
 ))
 
-class WithL1ICacheProfiling(enable: Boolean = true)  extends Config((site, here, up) => {
+class WithL1ICacheProfiling(histBufLen: Int = 16)  extends Config((site, here, up) => {
   case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
     case tp: RocketTileAttachParams => tp.copy(tileParams = tp.tileParams.copy(
-      icache = tp.tileParams.icache.map(_.copy(enableProfiling = enable))))
+      icache = tp.tileParams.icache.map(_.copy(
+        enableProfiling = true, 
+        entanglingParams = tp.tileParams.icache.get.entanglingParams.map(_.copy(
+          profilingHistBufLen = histBufLen
+        ))
+      ))
+    ))
     case t => t
   }
 })
