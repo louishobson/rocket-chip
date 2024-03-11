@@ -408,7 +408,7 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
    */
   val search_status = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
   val search_iter = Reg(UInt(log2Up(histBufLen/histBufSearchFragLen+1).W))
-  when(io.search_req.fire()) {
+  when(io.search_req.fire) {
     search_iter := (histBufLen/histBufSearchFragLen).U
     search_status.src := DontCare
     search_status.dst := io.search_req.bits.dst
@@ -880,9 +880,9 @@ class PrefetchQueue(implicit p: Parameters) extends CoreModule with HasEntanglin
   val current_req = RegInit((new EntanglingTablePrefetchResp).Lit(_.size -> 0.U))
 
   /* Update the current BB being distributed */
-  when(req_q.valid && ((io.resp.fire() && current_req.size === 1.U) || current_req.size === 0.U)) {
+  when(req_q.valid && ((io.resp.fire && current_req.size === 1.U) || current_req.size === 0.U)) {
     current_req := req_q.deq()
-  } .elsewhen (io.resp.fire() && current_req.size =/= 0.U) {
+  } .elsewhen (io.resp.fire && current_req.size =/= 0.U) {
     current_req.head := current_req.head + 1.U
     current_req.size := current_req.size - 1.U
   }
