@@ -866,7 +866,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     prefetcher.io.prefetch_resp.ready := !(s0_slaveValid || s3_slaveValid) && (!prefetch_s1_valid || prefetch_handled)
 
     /* We could drop this prefetch in stage 0 if we see that a refill for it is occurring */
-    prefetch_fire := prefetcher.io.prefetch_resp.fire() && (!mshr.io.resp.valid || refill_paddr =/= prefetcher.io.prefetch_resp.bits.paddr)
+    prefetch_fire := prefetcher.io.prefetch_resp.fire && (!mshr.io.resp.valid || refill_paddr =/= prefetcher.io.prefetch_resp.bits.paddr)
     prefetch_idx := prefetcher.io.prefetch_resp.bits.index
 
     /* Read the tag array and hold its value (for when a prefetch gets stuck in s1) */
@@ -897,7 +897,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
        */
       .otherwise {
         mshr.io.prefetch_req.valid := true.B
-        prefetch_handled := mshr.io.prefetch_req.fire()
+        prefetch_handled := mshr.io.prefetch_req.fire
       } 
     }
 
@@ -919,7 +919,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
       /* Insert into the miss history buffer on a demand miss.
        * Also check the evicted prefetch history to see if an early prefetch was made.
        */
-      when(s2_valid && !s2_hit) {
+      when(io.extPerf.get.cache_miss) {
         /* Insert into the miss history buffer */
         miss_history.io.insert.valid := true.B
         miss_history.io.insert.bits := s2_paddr
@@ -943,9 +943,20 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
         evicted_prefetch_history.io.query.bits := DontCare
       }
 
+      /* Mark access to a cache line.
+       * There is a small issue that this access_array update may coincide with the access_array reset on a refill.
+       * Writing this access_array update first in the code will cause the update on refill completion to win.
+       * This is much easier than trying to allow both bits to be changed at once, and chances are
+       * the cache line will be accessed again soon anyway.
+       */
+      when(s2_valid && s2_hit) {
+        access_array := access_array.bitSet(s2_hit_way ## s2_vaddr(untagBits-1,blockOffBits), true.B)
+      }
+
       /* Read the paddr of the cache line we are refilling when we start refilling
        * We can't do this on the last beat because of the read/write conflict.
        */
+      val refill_victim_was_valid = RegEnable(vb_array(refill_idx), refill_one_beat && refill_cnt === 0.U)
       val refill_victim_enc_tag = tag_array.readAndHold(refill_idx, refill_one_beat && refill_cnt === 0.U)
       val refill_victim_tag = tECC.decode(refill_victim_enc_tag(repl_way)).uncorrected(tagBits-1,0)
 
@@ -963,21 +974,16 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
         /* Look to see if we evicted an unused, prefetched cache line.
          * If so, add it to the evicted prefetch buffer.
          */
-        evicted_prefetch_history.io.insert.valid := vb_array(array_idx) && !access_array(array_idx) && !demand_array(array_idx)
+        evicted_prefetch_history.io.insert.valid := refill_victim_was_valid && !access_array(array_idx) && !demand_array(array_idx)
         evicted_prefetch_history.io.insert.bits := refill_victim_tag ## (refill_idx << blockOffBits)(pgUntagBits-1,0)
       } .otherwise {
-        /* Tie of evicted prefetch history buffer insertion IO */
+        /* Tie off evicted prefetch history buffer insertion IO */
         evicted_prefetch_history.io.insert.valid := false.B
         evicted_prefetch_history.io.insert.bits := DontCare
       }
 
-      /* Mark access to a cache line */
-      when(s2_valid && s2_hit) {
-        access_array := access_array.bitSet(s2_hit_way ## s2_vaddr(untagBits-1,blockOffBits), true.B)
-      }
-
       /* When a prefetch request is processed, see whether it was late by querying the miss history buffer */
-      when(prefetcher.io.prefetch_resp.fire()) {
+      when(prefetcher.io.prefetch_resp.fire) {
         /* !! PREFETCH CONSUMED !!  Print that a prefetch is being consumed */
         io.extPerf.get.prefetch_consumed := true.B
 
@@ -1034,10 +1040,14 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     /* !! CACHE RESPONSE !! Report on an I$ response */
     io.extPerf.get.cache_response := io.resp.valid
 
-    /* !! CACHE MISS !! Report when a cache miss happens */
+    /* !! CACHE MISS !! Report when a cache miss happens.
+     * The frontend keeps requesting a demand-missed address until the request succeeds
+     * We only want this to report as a single miss (the first instance when the miss occured), 
+     * which is why we want the second condition here.
+     */
     io.extPerf.get.cache_miss := s2_miss && !(ongoing_demand_miss && s2_vaddr(untagBits-1,blockOffBits) === demand_miss_index)
 
-    /* Report when a refill occurs and its type */
+    /* !! DEMAND/PREFETCH REFILL !! Report when a refill occurs and its type */
     io.extPerf.get.demand_refill := refill_done && mshr.io.resp.bits.demand
     io.extPerf.get.prefetch_refill := refill_done && !mshr.io.resp.bits.demand
   }
