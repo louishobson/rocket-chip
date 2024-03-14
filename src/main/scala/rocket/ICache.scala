@@ -220,6 +220,7 @@ class ICacheExtPerfEvents extends Bundle {
   val early_prefetch = Bool()
   val no_prefetch = Bool()
   val erroneous_prefetch = Bool()
+  val demand_miss_cycles = Bool()
 }
 
 /** IO from CPU to ICache. */
@@ -1050,6 +1051,12 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     /* !! DEMAND/PREFETCH REFILL !! Report when a refill occurs and its type */
     io.extPerf.get.demand_refill := refill_done && mshr.io.resp.bits.demand
     io.extPerf.get.prefetch_refill := refill_done && !mshr.io.resp.bits.demand
+
+    /* !! DEMAND MISS CYCLES !! Active exactly when a demand miss is happening.
+     * This gives a bit more insight as to how the prefetcher slows down demand misses,
+     * rather than just looking at the cache miss rate which may be misleading.
+     */
+    io.extPerf.get.demand_miss_cycles := ongoing_demand_miss
   }
 
 
