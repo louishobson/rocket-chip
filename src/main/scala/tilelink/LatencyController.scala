@@ -3,9 +3,8 @@
 package freechips.rocketchip.tilelink
 
 import chisel3._
-import chisel3.util.{DecoupledIO, log2Up}
+import chisel3.util.{Decoupled, DecoupledIO, Queue, log2Up}
 import freechips.rocketchip.diplomacy._
-import freechips.rocketchip.util.LatencyPipe
 import org.chipsalliance.cde.config.Parameters
 
 
@@ -26,9 +25,58 @@ object TLLatencies {
 
 
 
+/** [[LatencyThroughputPipe]] Like [[LatencyPipe]], but it allows propagation of data at a slower rate. */
+class LatencyThroughputPipe[T <: Data](typ: T, latency: Int, period: Int) extends Module {
+  
+  /* We need latency/period to be an integer */
+  assert(latency % period == 0, "Latency must be a product of the period to create a LatencyThroughputPipe")
+  
+  /* The period should be positive */
+  assert(period >= 1, "The period must be positive to create a LatencyThroughputPipe")
+
+  /* Define the IO */
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(typ))
+    val out = Decoupled(typ)
+  })
+
+  /* Add a counter to reduce throughput */
+  val queue_period_cnt = RegInit(0.U(log2Up(period).W))
+
+  /* Reset the counter on on transfer, otherwise decrement it */
+  when(io.in.fire) {
+    queue_period_cnt := (period-1).U
+  } .elsewhen(queue_period_cnt =/= 0.U) {
+    queue_period_cnt := queue_period_cnt - 1.U
+  }  
+
+  /* Create a decoupled IO which is gated based on queue_period_cnt */
+  def gated[T <: Data](in: DecoupledIO[T]): DecoupledIO[T] = {
+    val out = Wire(chiselTypeOf(in))
+    out.valid := in.valid && queue_period_cnt === 0.U
+    in.ready := out.ready && queue_period_cnt === 0.U
+    out.bits := in.bits
+    out
+  }
+
+  /* Connect the output to lots of gated queues */
+  io.out :<>= gated((0 until (latency/period)).foldLeft(io.in)((last_io, _) => Queue(gated(last_io), 1, true)))
+}
+
+/** [[LatencyThroughputPipe]] Constructs a LatencyThroughputPipe */ 
+object LatencyThroughputPipe {
+  def apply[T <: Data](in: DecoupledIO[T], latency: Int, period: Int): DecoupledIO[T] = {
+    val pipe = Module(new LatencyThroughputPipe(chiselTypeOf(in.bits), latency, period))
+    pipe.io.in :<>= in
+    pipe.io.out
+  }
+}
+
+
+
+
 /** [[TLLatencyController]] a TL adapter node in order to enforce minimum latencies on different message types */
-class TLLatencyController(q: TLLatencies)(implicit p: Parameters) extends LazyModule
-{
+class TLLatencyController(q: TLLatencies)(implicit p: Parameters) extends LazyModule {
 
   /* Assert that the latency is positive */
   assert(q.latency >= 0)
@@ -59,33 +107,8 @@ class TLLatencyController(q: TLLatencies)(implicit p: Parameters) extends LazyMo
         /* Assert that the queue packet period is a factor of the latency */
         assert(q.queuePacketPeriod >= 1 && q.latency % q.queuePacketPeriod == 0)
 
-        /* We can create simpler logic if there is no packet period */
-        if (q.queuePacketPeriod == 1) {
-
-          /* Add a queue on the D channel */
-          in.d :<>= LatencyPipe(out.d, q.latency / q.queuePacketPeriod)  
-
-        } else { 
-
-          /* Add a counter to reduce throughput */
-          val queue_period_cnt = RegInit(0.U(log2Up(q.queuePacketPeriod).W))
-
-          /* Block the D channnel while the timer is non-0 */
-          val out_d_gated = Wire(chiselTypeOf(out.d))
-          out_d_gated.valid := out.d.valid && queue_period_cnt === 0.U
-          out.d.ready := out_d_gated.ready && queue_period_cnt === 0.U
-          out_d_gated.bits := out.d.bits
-
-          /* Reset the counter on on transfer, otherwise decrement it */
-          when(out_d_gated.fire) {
-            queue_period_cnt := (q.queuePacketPeriod-1).U
-          } .elsewhen(queue_period_cnt =/= 0.U) {
-            queue_period_cnt := queue_period_cnt - 1.U
-          }        
-
-          /* Add a queue on the D channel */
-          in.d :<>= LatencyPipe(out_d_gated, q.latency / q.queuePacketPeriod)  
-        }
+        /* Create a Latency(Throughput)Pipe */
+        in.d :<>= LatencyThroughputPipe(out.d, q.latency, q.queuePacketPeriod)  
 
       } else {
 
