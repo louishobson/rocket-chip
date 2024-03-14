@@ -108,7 +108,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   assert(entanglingAddrBits >= baddrBits)
 
   /* The sequence of masks where the set bits are the bits lost by compression */
-  def entanglingEqualityMaskLookup = Seq.tabulate(maxEntanglings+2){case 0 => 0; case i =>
+  def entanglingLostBitsMask = Seq.tabulate(maxEntanglings+2){case 0 => 0; case i =>
     val entryBits = (entanglingAddrBits/i) min baddrBits
     val compressBits = baddrBits - entryBits
     ((1<<compressBits)-1)<<entryBits
@@ -173,17 +173,15 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
 
   /* If we are in the busy state, then continue with the ongoing encoding */
   when(busy) {
-    /* The number of bits each baddr will be compressed to.
-     * This is equivalent to (entanglingAddrBits.U / req.len), but as a lookup table.
-     */
-    val entanglingMask = VecInit(entanglingEqualityMaskLookup.map(_.U(baddrBits.W)))(req.len)
+    /* A bitset of the bits lost to compression as a lookup table */
+    val lostBitsMask = VecInit(entanglingLostBitsMask.map(_.U(baddrBits.W)))(req.len)
 
     /* Consider whether we can perform the compression. We must have
      *  - maxEntanglings or fewer addresses to entangle, and
      *  - each address must share the same MSBs as the head.
      */
     val baddrs_okay = req.len =/= (maxEntanglings+1).U && req.baddrs.zipWithIndex.map{
-      case (baddr, i) => (baddr & entanglingMask) === (req.head & entanglingMask) || i.U >= req.len
+      case (baddr, i) => (baddr & lostBitsMask) === (req.head & lostBitsMask) || i.U >= req.len
     }.reduce(_&&_)
 
     /* We can produce an output entangling sequence when baddrs_okay is flagged.
