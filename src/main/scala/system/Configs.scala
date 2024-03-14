@@ -32,13 +32,19 @@ class DefaultConfig extends Config(
   new WithMemoryBusLatency(TLLatencies.queue(50, 5)) ++
   new WithL1ICacheWays(2) ++ 
   new WithL1ICacheSets(32) ++ 
-  //new WithNBigCores(1) ++ 
-  new WithNMedCores(1) ++
+  new WithNBigCores(1) ++ 
+  //new WithNMedCores(1) ++
   new WithCoherentBusTopology ++ 
   new BaseConfig
 )
 
-class EntanglingIPrefetcherConfig extends Config(new WithEntanglingIPrefetcher ++ new DefaultConfig)
+class EntanglingIPrefetcherConfig extends Config(
+  new WithEntanglingIPrefetcherTableSize(nSets=1024, nWays=4) ++
+  new WithEntanglingIPrefetcherCompressionCfg(entanglingBits=44, maxEntanglings=4) ++
+  new WithEntanglingIPrefetcherNPrefetchMSHRs(2) ++ 
+  new WithEntanglingIPrefetcher ++ 
+  new DefaultConfig
+)
 
 class SimpleConfig extends Config(new With1SimpleCore ++ new WithCoherentBusTopology ++ new BaseConfig)
 

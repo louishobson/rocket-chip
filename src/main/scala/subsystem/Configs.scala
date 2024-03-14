@@ -741,12 +741,16 @@ class WithEntanglingIPrefetcherBBLimits(sigSize: Int, maxGap: Int) extends WithT
   sigBBSize = sigSize, maxBBGapSize = maxGap
 ))
 
-class WithEntanglingIPrefetcherTableSize(nWays: Int, nSets: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
-  nWays = nWays, nSets = nSets
+class WithEntanglingIPrefetcherTableSize(nSets: Int, nWays: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
+  nSets = nSets, nWays = nWays
 ))
 
 class WithEntanglingIPrefetcherCompressionCfg(entanglingBits: Int, maxEntanglings: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
   entanglingBits = entanglingBits, maxEntanglings = maxEntanglings
+))
+
+class WithEntanglingIPrefetcherNPrefetchMSHRs(nPrefetchMSHRs: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
+  nPrefetchMSHRs = nPrefetchMSHRs
 ))
 
 class WithL1ICacheProfiling(histBufLen: Int = 16)  extends Config((site, here, up) => {
