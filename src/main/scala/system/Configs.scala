@@ -25,11 +25,10 @@ class DefaultConfig extends Config(
   new WithL1ICacheProfiling ++ 
   new WithNPerfCounters(16) ++
   new WithoutTLMonitors ++
-  new WithInclusiveCache(outerLatencyCycles = 50, nWays = 4, capacityKB = 128) ++
-  new WithL2Latency(TLLatencies.block(10)) ++
-  //new WithFrontBusLatency(new TLLatencies(10, 10, 10, 0, 10)) ++
-  new WithControlBusLatency(TLLatencies.block(10)) ++
-  new WithMemoryBusLatency(TLLatencies.queue(50, 5)) ++
+  new WithInclusiveCache(outerLatencyCycles = 100, nWays = 4, capacityKB = 128) ++
+  new WithL2Latency(TLLatencies.block(15)) ++
+  new WithControlBusLatency(TLLatencies.block(15)) ++
+  new WithMemoryBusLatency(TLLatencies.queue(100, 10)) ++
   new WithL1ICacheWays(2) ++ 
   new WithL1ICacheSets(32) ++ 
   new WithNBigCores(1) ++ 
@@ -41,7 +40,7 @@ class DefaultConfig extends Config(
 class EntanglingIPrefetcherConfig extends Config(
   new WithEntanglingIPrefetcherTableSize(nSets=1024, nWays=4) ++
   new WithEntanglingIPrefetcherCompressionCfg(entanglingBits=44, maxEntanglings=4) ++
-  new WithEntanglingIPrefetcherNPrefetchMSHRs(2) ++ 
+  new WithEntanglingIPrefetcherNPrefetchMSHRs(3) ++ 
   new WithEntanglingIPrefetcher ++ 
   new DefaultConfig
 )
