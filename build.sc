@@ -251,11 +251,11 @@ trait Emulator extends Cross.Module2[String, String] {
         "--output-split 50000",
         //"--output-split-cfuncs 1000000",
         "--max-num-width 1048576",
-        "--threads 6",
+        //"--threads 6",
         "-O2", "-fno-table",
         //"--noassert",
         s"-I${vsrcDir().path}",
-        "-j 2",
+        "--threads 6",
         // format: on
       )
     }
@@ -268,13 +268,13 @@ trait Emulator extends Cross.Module2[String, String] {
 
     def elf = T.persistent {
       mill.util.Jvm.runSubprocess(Seq("cmake", "-G", "Ninja", "-S", cmakefileLists().path, "-B", T.dest.toString, "-Wno-dev").map(_.toString), Map[String, String](), T.dest)
-      mill.util.Jvm.runSubprocess(Seq("ninja", "-C", T.dest, "emulator").map(_.toString), Map[String, String](), T.dest)
+      mill.util.Jvm.runSubprocess(Seq("ninja", "-j12", "-C", T.dest, "emulator").map(_.toString), Map[String, String](), T.dest)
       PathRef(T.dest / "emulator")
     }
 
     def elf_trace = T.persistent {
       mill.util.Jvm.runSubprocess(Seq("cmake", "-G", "Ninja", "-S", cmakefileLists().path, "-B", T.dest.toString, "-Wno-dev").map(_.toString), Map[String, String](), T.dest)
-      mill.util.Jvm.runSubprocess(Seq("ninja", "-C", T.dest, "emulator.trace").map(_.toString), Map[String, String](), T.dest)
+      mill.util.Jvm.runSubprocess(Seq("ninja", "-j12", "-C", T.dest, "emulator.trace").map(_.toString), Map[String, String](), T.dest)
       PathRef(T.dest / "emulator")
     }
   }
@@ -290,9 +290,41 @@ trait Emulator extends Cross.Module2[String, String] {
 
 /** object to elaborate verilated emulators. */
 object emulator extends Cross[Emulator](
+  // Prefetcher Configs
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherNoPrefetcherBaselineConfig"),
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize064Sets4WaysConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize064Sets8WaysConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize128Sets4WaysConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize128Sets8WaysConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize256Sets4WaysConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize256Sets8WaysConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize512Sets4WaysConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize512Sets8WaysConfig"),
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize064Sets2WaysNoPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize064Sets4WaysNoPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize128Sets2WaysNoPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize128Sets4WaysNoPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize256Sets2WaysNoPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize256Sets4WaysNoPrefetcherConfig"),
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize064Sets2WaysWithPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize064Sets4WaysWithPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize128Sets2WaysWithPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize128Sets4WaysWithPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize256Sets2WaysWithPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize256Sets4WaysWithPrefetcherConfig"),
+  
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1Config"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2Config"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3Config"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4Config"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5Config"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6Config"),
+
   // RocketSuiteA
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultConfig"),
-  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherConfig"),
   // RocketSuiteB
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultBufferlessConfig"),
   // RocketSuiteC
