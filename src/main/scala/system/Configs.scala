@@ -21,29 +21,75 @@ class BaseConfig extends Config(
   new BaseSubsystemConfig
 )
 
-class DefaultConfig extends Config(
+class DefaultConfig extends Config(new WithNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
+
+class EntanglingIPrefetcherBaseConfig(
+  nSets: Int = 64,
+  nWays: Int = 2
+) extends Config(
   new WithL1ICacheProfiling ++ 
   new WithNPerfCounters(16) ++
+  
   new WithoutTLMonitors ++
-  new WithInclusiveCache(outerLatencyCycles = 100, nWays = 4, capacityKB = 128) ++
+    
   new WithL2Latency(TLLatencies.block(15)) ++
   new WithControlBusLatency(TLLatencies.block(15)) ++
   new WithMemoryBusLatency(TLLatencies.queue(100, 10)) ++
-  new WithL1ICacheWays(2) ++ 
-  new WithL1ICacheSets(32) ++ 
-  new WithNBigCores(1) ++ 
-  //new WithNMedCores(1) ++
-  new WithCoherentBusTopology ++ 
-  new BaseConfig
-)
 
-class EntanglingIPrefetcherConfig extends Config(
-  new WithEntanglingIPrefetcherTableSize(nSets=1024, nWays=4) ++
-  new WithEntanglingIPrefetcherCompressionCfg(entanglingBits=44, maxEntanglings=4) ++
-  new WithEntanglingIPrefetcherNPrefetchMSHRs(3) ++ 
-  new WithEntanglingIPrefetcher ++ 
+  new WithInclusiveCache(outerLatencyCycles = 100, nWays = 4, capacityKB = 128) ++
+
+  new WithL1ICacheWays(nWays) ++ 
+  new WithL1ICacheSets(nSets) ++ 
+  
   new DefaultConfig
 )
+
+class EntanglingIPrefetcherConfig(
+  nSets : Int = 64,
+  nWays: Int = 2,
+  entanglingNSets: Int = 512,
+  entanglingNWays: Int = 4,
+  entanglingAddrBits: Int = 60, 
+  maxEntanglings: Int = 6
+) extends Config(
+  new WithEntanglingIPrefetcherTableSize(entanglingNSets, entanglingNWays) ++
+  new WithEntanglingIPrefetcherCompressionCfg(entanglingAddrBits, maxEntanglings) ++
+  new WithEntanglingIPrefetcherNPrefetchMSHRs(3) ++ 
+  new WithEntanglingIPrefetcher ++ 
+  new EntanglingIPrefetcherBaseConfig(nSets, nWays)
+)
+
+class EntanglingIPrefetcherNoPrefetcherBaselineConfig extends EntanglingIPrefetcherBaseConfig
+
+class EntanglingIPrefetcherMaxEntanglings1Config extends EntanglingIPrefetcherConfig(entanglingAddrBits=26, maxEntanglings=1) //26
+class EntanglingIPrefetcherMaxEntanglings2Config extends EntanglingIPrefetcherConfig(entanglingAddrBits=32, maxEntanglings=2) //32, 16
+class EntanglingIPrefetcherMaxEntanglings3Config extends EntanglingIPrefetcherConfig(entanglingAddrBits=38, maxEntanglings=3) //38, 19, 12
+class EntanglingIPrefetcherMaxEntanglings4Config extends EntanglingIPrefetcherConfig(entanglingAddrBits=44, maxEntanglings=4) //44, 22, 14, 11
+class EntanglingIPrefetcherMaxEntanglings5Config extends EntanglingIPrefetcherConfig(entanglingAddrBits=52, maxEntanglings=5) //52, 26, 17, 13, 10
+class EntanglingIPrefetcherMaxEntanglings6Config extends EntanglingIPrefetcherConfig(entanglingAddrBits=60, maxEntanglings=6) //60, 30, 20, 15, 12, 10
+
+class EntanglingIPrefetcherICacheSize064Sets2WaysNoPrefetcherConfig extends EntanglingIPrefetcherBaseConfig(nSets=64, nWays=2)
+class EntanglingIPrefetcherICacheSize064Sets4WaysNoPrefetcherConfig extends EntanglingIPrefetcherBaseConfig(nSets=64, nWays=4)
+class EntanglingIPrefetcherICacheSize128Sets2WaysNoPrefetcherConfig extends EntanglingIPrefetcherBaseConfig(nSets=128, nWays=2)
+class EntanglingIPrefetcherICacheSize128Sets4WaysNoPrefetcherConfig extends EntanglingIPrefetcherBaseConfig(nSets=128, nWays=4)
+class EntanglingIPrefetcherICacheSize256Sets2WaysNoPrefetcherConfig extends EntanglingIPrefetcherBaseConfig(nSets=256, nWays=2)
+class EntanglingIPrefetcherICacheSize256Sets4WaysNoPrefetcherConfig extends EntanglingIPrefetcherBaseConfig(nSets=256, nWays=4)
+
+class EntanglingIPrefetcherICacheSize064Sets2WaysWithPrefetcherConfig extends EntanglingIPrefetcherConfig(nSets=64, nWays=2)
+class EntanglingIPrefetcherICacheSize064Sets4WaysWithPrefetcherConfig extends EntanglingIPrefetcherConfig(nSets=64, nWays=4)
+class EntanglingIPrefetcherICacheSize128Sets2WaysWithPrefetcherConfig extends EntanglingIPrefetcherConfig(nSets=128, nWays=2)
+class EntanglingIPrefetcherICacheSize128Sets4WaysWithPrefetcherConfig extends EntanglingIPrefetcherConfig(nSets=128, nWays=4)
+class EntanglingIPrefetcherICacheSize256Sets2WaysWithPrefetcherConfig extends EntanglingIPrefetcherConfig(nSets=256, nWays=2)
+class EntanglingIPrefetcherICacheSize256Sets4WaysWithPrefetcherConfig extends EntanglingIPrefetcherConfig(nSets=256, nWays=4)
+
+class EntanglingIPrefetcherTableSize064Sets4WaysConfig extends EntanglingIPrefetcherConfig(entanglingNSets=64, entanglingNWays=4)
+class EntanglingIPrefetcherTableSize064Sets8WaysConfig extends EntanglingIPrefetcherConfig(entanglingNSets=64, entanglingNWays=8)
+class EntanglingIPrefetcherTableSize128Sets4WaysConfig extends EntanglingIPrefetcherConfig(entanglingNSets=128, entanglingNWays=4)
+class EntanglingIPrefetcherTableSize128Sets8WaysConfig extends EntanglingIPrefetcherConfig(entanglingNSets=128, entanglingNWays=8)
+class EntanglingIPrefetcherTableSize256Sets4WaysConfig extends EntanglingIPrefetcherConfig(entanglingNSets=256, entanglingNWays=4)
+class EntanglingIPrefetcherTableSize256Sets8WaysConfig extends EntanglingIPrefetcherConfig(entanglingNSets=256, entanglingNWays=8)
+class EntanglingIPrefetcherTableSize512Sets4WaysConfig extends EntanglingIPrefetcherConfig(entanglingNSets=512, entanglingNWays=4)
+class EntanglingIPrefetcherTableSize512Sets8WaysConfig extends EntanglingIPrefetcherConfig(entanglingNSets=512, entanglingNWays=8)
 
 class SimpleConfig extends Config(new With1SimpleCore ++ new WithCoherentBusTopology ++ new BaseConfig)
 
