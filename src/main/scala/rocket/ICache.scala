@@ -1013,18 +1013,17 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
        * Report an erroneous prefetch when an evicted prefetch is also evicted from the history.
        */
       io.extPerf.get.erroneous_prefetch := evicted_prefetch_history.io.evicted.valid
-    }
-
-
+      
+    } else {
+      /* Tie-off prefetcher performance monitoring */
+      io.extPerf.get.prefetch_consumed := false.B
+      io.extPerf.get.late_prefetch := false.B
+      io.extPerf.get.early_prefetch := false.B
+      io.extPerf.get.no_prefetch := false.B
+      io.extPerf.get.erroneous_prefetch := false.B
+    } 
 
   } else {
-    /* Tie-off prefetcher performance monitoring */
-    io.extPerf.get.prefetch_consumed := false.B
-    io.extPerf.get.late_prefetch := false.B
-    io.extPerf.get.early_prefetch := false.B
-    io.extPerf.get.no_prefetch := false.B
-    io.extPerf.get.erroneous_prefetch := false.B
-
     /* Even when we have no prefetcher, we still need to set the prefetch request IO on the MSHR */
     mshr.io.prefetch_req.valid := false.B
     mshr.io.prefetch_req.bits := DontCare
