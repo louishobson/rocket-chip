@@ -39,9 +39,9 @@ case class EntanglingIPrefetcherParams(
   prefetchQueueSize: Int = 8,
   /* The number of outstanding prefetch requests */
   nPrefetchMSHRs: Int = 3,
-  /* The number of bits used to store entanglings */
-  entanglingBits: Int = 63,
-  /* The maximum number of entanglings which can be stored in entanglingBits */
+  /* The number of bits used to store entanglings (just addresses, not the size) */
+  entanglingAddrBits: Int = 60,
+  /* The maximum number of entanglings which can be stored in entanglingAddrBits */
   maxEntanglings: Int = 6,
   /* Settings for profiling */
   profilingHistBufLen: Int = 16
@@ -68,7 +68,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def eTableEntangleQueueSize = entanglingParams.eTableEntangleQueueSize
   def prefetchQueueSize = entanglingParams.prefetchQueueSize
   def nPrefetchMSHRs = entanglingParams.nPrefetchMSHRs
-  def entanglingBits = entanglingParams.entanglingBits
+  def entanglingAddrBits = entanglingParams.entanglingAddrBits
   def maxEntanglings = entanglingParams.maxEntanglings
 
   /* The block address size */
@@ -104,7 +104,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   /* The bits used to just store the entangling addresses.
    * Assert that at least one address can be fully stored.
    */
-  def entanglingAddrBits = entanglingBits - entanglingSizeBits
+  def entanglingBits = entanglingAddrBits + entanglingSizeBits
   assert(entanglingAddrBits >= baddrBits)
 
   /* The sequence of masks where the set bits are the bits lost by compression */
@@ -571,12 +571,13 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   /* Define the tag and size SRAM. Each entry contains:
    *  - a validity bit in the LSB,
    *  - followed by the tag,
+   *  - followed by the remaining vaddr bits to make up the I$ index (if applicable),
    *  - followed by the BB size.
    * If you try to use a bundle as the base type then the Verilog produced has a mask bit for _every_
    * bit of each way (rather than the same number of bits as ways).
    */
   val tag_size_array = DescribedSRAM(
-    name = "tag_and_size_array",
+    name = "entangling_tag_and_size_array",
     desc = "Entangling Prefetcher Tag and Size Array",
     size = eTableNSets,
     data = Vec(eTableNWays, Bits((lgMaxBBSize+vidxBits+entTagBits+1).W))
@@ -584,7 +585,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
   /* Define the entangling SRAM */
   val entangling_array = DescribedSRAM(
-    name = "entangling_array",
+    name = "entangling_data_array",
     desc = "Entangling Prefetcher Entangling Array",
     size = eTableNSets,
     data = Vec(eTableNWays, Bits(entanglingBits.W))

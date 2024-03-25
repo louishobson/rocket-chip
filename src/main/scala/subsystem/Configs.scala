@@ -745,8 +745,8 @@ class WithEntanglingIPrefetcherTableSize(nSets: Int, nWays: Int) extends WithTra
   nSets = nSets, nWays = nWays
 ))
 
-class WithEntanglingIPrefetcherCompressionCfg(entanglingBits: Int, maxEntanglings: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
-  entanglingBits = entanglingBits, maxEntanglings = maxEntanglings
+class WithEntanglingIPrefetcherCompressionCfg(entanglingAddrBits: Int, maxEntanglings: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
+  entanglingAddrBits = entanglingAddrBits, maxEntanglings = maxEntanglings
 ))
 
 class WithEntanglingIPrefetcherNPrefetchMSHRs(nPrefetchMSHRs: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
