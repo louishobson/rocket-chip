@@ -1,7 +1,11 @@
 EVAL_DIR := $(abspath ./)
 BASE_DIR := $(abspath ../)
+RESULTS_DIR := $(EVAL_DIR)/results
 
-TARGETS := \
+MILL := mill --no-server 
+PROJECT := freechips.rocketchip.system
+
+CONFIGS := \
 	EntanglingIPrefetcherNoPrefetcherBaselineConfig \
 	EntanglingIPrefetcherTableSize064Sets4WaysConfig \
 	EntanglingIPrefetcherTableSize064Sets8WaysConfig \
@@ -30,12 +34,34 @@ TARGETS := \
 	EntanglingIPrefetcherMaxEntanglings5Config \
 	EntanglingIPrefetcherMaxEntanglings6Config 
 
-MILL := mill --no-server 
-PROJECT := freechips.rocketchip.system
-FAIL_SLEEP := 20 
+ALL_BUILD_TARGETS = $(patsubst %,build-%,$(CONFIGS))
+ALL_RUN_TARGETS = $(patsubst %,run-%,$(CONFIGS))
 
-build-all: $(patsubst %,build-%,$(TARGETS))
+BUILD_CONFIG = $(patsubst build-%,%,$@)
+RUN_CONFIG = $(patsubst run-%,%,$@)
 
+build: $(ALL_BUILD_TARGETS)
 build-%::
-	cd $(BASE_DIR) && until $(MILL) emulator[$(PROJECT).TestHarness,$(PROJECT).$(patsubst build-%,%,$@)].elf; do sleep $(FAIL_SLEEP); done
+	cd $(BASE_DIR) && $(MILL) emulator[$(PROJECT).TestHarness,$(PROJECT).$(BUILD_CONFIG)].elf
+
+run: $(ALL_RUN_TARGETS)
+run-%::
+	mkdir -p "$(RESULTS_DIR)/$(RUN_CONFIG)"
+	$(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(RUN_CONFIG)/verilator/elf.dest/emulator \
+		pk /home/ldh35/parsec_gc/ext/splash2x/apps/radiosity/inst/amd64-linux.gcc-serial/bin/radiosity \
+		bf 1.0e-1 -batch -p 1 \
+		2>&1 >"$(RESULTS_DIR)/$(RUN_CONFIG)/radiosity.output" \
+		| spike-dasm >"$(RESULTS_DIR)/$(RUN_CONFIG)/radiosity.log"
+	$(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(RUN_CONFIG)/verilator/elf.dest/emulator \
+		pk /home/ldh35/parsec_gc/ext/splash2x/apps/barnes/inst/amd64-linux.gcc-serial/bin/barnes \
+		2>&1 >"$(RESULTS_DIR)/$(RUN_CONFIG)/barnes.output" \
+		| spike-dasm >"$(RESULTS_DIR)/$(RUN_CONFIG)/barnes.log"
+	$(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(RUN_CONFIG)/verilator/elf.dest/emulator \
+		pk /home/ldh35/parsec_gc/ext/splash2x/apps/water_spatial/inst/amd64-linux.gcc-serial/bin/water_spatial \
+		"$(cat /home/ldh35/parsec_gc/ext/splash2x/apps/water_spatial/run/input_1)" \
+		2>&1 >"$(RESULTS_DIR)/$(RUN_CONFIG)/water_spatial.output" \
+		| spike-dasm >"$(RESULTS_DIR)/$(RUN_CONFIG)/water_spatial.log"
+	
+
+
 	
