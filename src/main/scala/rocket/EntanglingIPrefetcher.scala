@@ -84,8 +84,9 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def vidxBits = 0.max(blockOffBits + idxBits - pgIdxBits)
 
   /* Configuration for the entangling table */
-  require(isPow2(nWays), "entanglingNSets must be a power of 2")
-  def entIdxBits = log2Up(nSets)
+  require(isPow2(eTableNSets), "entanglingNSets must be a power of 2")
+  require(isPow2(eTableNWets), "entanglingNWets must be a power of 2")
+  def entIdxBits = log2Up(eTableNSets)
   def entTagBits = baddrBits - entIdxBits
 
   /* The number of bits required to store a BB size */
