@@ -85,7 +85,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
 
   /* Configuration for the entangling table */
   require(isPow2(eTableNSets), "entanglingNSets must be a power of 2")
-  require(isPow2(eTableNWays), "entanglingNWets must be a power of 2")
+  require(isPow2(eTableNWays), "entanglingNWays must be a power of 2")
   def entIdxBits = log2Up(eTableNSets)
   def entTagBits = baddrBits - entIdxBits
 
