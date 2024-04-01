@@ -20,4 +20,5 @@ rocketchip.jar
 .bloop/
 .bsp/
 scratch/
-evaluation/results/
+evaluation/results/*
+!evaluation/results/Core/
