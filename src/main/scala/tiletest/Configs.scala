@@ -253,6 +253,7 @@ class EntanglingIPrefetcherUnitTestConfig extends Config(
   new WithHistoryBufferTests ++
   new WithBBCounterTests ++
   new WithEntanglingTests ++
-  new EntanglingIPrefetcherConfig
+  new WithEntanglingIPrefetcher ++
+  new DefaultConfig
 )
 
