@@ -43,6 +43,12 @@ case class EntanglingIPrefetcherParams(
   entanglingAddrBits: Int = 60,
   /* The maximum number of entanglings which can be stored in entanglingAddrBits */
   maxEntanglings: Int = 6,
+  /* A constant to take into account the latency from entangling table request to memory request.
+   * Defaults to 0 but can be changed to take into account the L2 memory bandwidth.
+   * Perhaps expect the MSHR to be full when the prefetch reaches the I$, and for several other prefetches
+   * to be also waiting. Some small multiple of the L2 response cycles is therefore sensible.
+   */
+  prefetchIssueLatency: Int = 0,
   /* Settings for profiling */
   profilingHistBufLen: Int = 16
 )
@@ -70,6 +76,8 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def nPrefetchMSHRs = entanglingParams.nPrefetchMSHRs
   def entanglingAddrBits = entanglingParams.entanglingAddrBits
   def maxEntanglings = entanglingParams.maxEntanglings
+  def prefetchIssueLatency = entanglingParams.prefetchIssueLatency
+  def profilingHistBufLen = entanglingParams.profilingHistBufLen
 
   /* The block address size */
   def baddrBits = paddrBits - blockOffBits
@@ -972,7 +980,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   assert(!history_buffer.io.search_req.valid || history_buffer.io.search_req.ready)
   history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
   history_buffer.io.search_req.bits.dst := miss_baddr
-  history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (time - bb_counter.io.resp.time)
+  history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (time - bb_counter.io.resp.time + prefetchIssueLatency.U)
 
 
 

@@ -753,6 +753,10 @@ class WithEntanglingIPrefetcherNPrefetchMSHRs(nPrefetchMSHRs: Int) extends WithT
   nPrefetchMSHRs = nPrefetchMSHRs
 ))
 
+class WithEntanglingIPrefetcherIssueLatency(issueLatency: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
+  prefetchIssueLatency = issueLatency
+))
+
 class WithL1ICacheProfiling(histBufLen: Int = 16)  extends Config((site, here, up) => {
   case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
     case tp: RocketTileAttachParams => tp.copy(tileParams = tp.tileParams.copy(

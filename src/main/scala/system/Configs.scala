@@ -52,6 +52,7 @@ class EntanglingIPrefetcherConfig(
   entanglingAddrBits: Int = 60, 
   maxEntanglings: Int = 6
 ) extends Config(
+  new WithEntanglingIPrefetcherIssueLatency(24) ++
   new WithEntanglingIPrefetcherTableSize(entanglingNSets, entanglingNWays) ++
   new WithEntanglingIPrefetcherCompressionCfg(entanglingAddrBits, maxEntanglings) ++
   new WithEntanglingIPrefetcherNPrefetchMSHRs(3) ++ 

@@ -2,7 +2,7 @@ package freechips.rocketchip.rocket
 
 import chisel3._
 import chisel3.experimental.BundleLiterals._
-import chisel3.util.{Decoupled, RegEnable, log2Up}
+import chisel3.util.{Decoupled, Queue, RegEnable, log2Up}
 import freechips.rocketchip.amba.AMBAProt
 import freechips.rocketchip.tile.{CoreBundle, CoreModule}
 import freechips.rocketchip.tilelink._
@@ -41,6 +41,10 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val soft_prefetch = Input(Bool())
   })
 
+  /* Create input queues in order to service memory requests as fast as possible */
+  val demand_q = Queue(io.demand_req, entries=1, flow=true)
+  val prefetch_q = Queue(io.prefetch_req, entries=1, flow=true)
+
   /* We are ready for a response when it either had no data (meaning it is a hint response), or the I$ is ready */
   io.d_channel.ready := !edge.hasData(io.d_channel.bits) || io.resp.ready
 
@@ -53,23 +57,23 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   }).Lit(_.valid -> false.B))))
 
   /* Whether we could accept another request (ignoring whether the TL channel is ready) */
-  val can_accept_demand_req = io.demand_req.valid && !status.map(_.valid).asUInt.andR
-  val can_accept_prefetch_req = hasPrefetcher.B && io.prefetch_req.valid && !status.tail.map(_.valid).asUInt.andR
+  val can_accept_demand_req = demand_q.valid && !status.map(_.valid).asUInt.andR
+  val can_accept_prefetch_req = hasPrefetcher.B && prefetch_q.valid && !status.tail.map(_.valid).asUInt.andR
 
   /* We will accept the next demand request whenever we have space and the A TL port is ready */
-  io.demand_req.ready := can_accept_demand_req && io.a_channel.ready
+  demand_q.ready := can_accept_demand_req && io.a_channel.ready
 
   /* We will accept the next prefetch request when
    *  - The prefetcher is enabled,
-   *  - there is a valid request (io.prefetch_req.valid is asserted),
+   *  - there is a valid request (prefetch_q.valid is asserted),
    *  - we have space,
    *  - the A TL port is ready, and
    *  - a demand request isn't currently being accepted.
    */
-  io.prefetch_req.ready := can_accept_prefetch_req && !can_accept_demand_req && io.a_channel.ready
+ prefetch_q.ready := can_accept_prefetch_req && !can_accept_demand_req && io.a_channel.ready
 
   /* Get the next request */
-  val req = Mux(can_accept_demand_req, io.demand_req.bits, io.prefetch_req.bits)
+  val req = Mux(can_accept_demand_req, demand_q.bits, prefetch_q.bits)
   assert(req.paddr(blockOffBits-1,0) === 0.U)
 
   /* Check if the request is already in flight */
