@@ -77,6 +77,8 @@ build-%::
 
 run: $(ALL_RUN_TARGETS)
 
+run-all-%: run-radiosity-% run-barnes-% run-water-spatial-%
+
 run-radiosity-%::
 	mkdir -p "$(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)"
 	if [ ! -f $(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)/radiosity.output ]; \
