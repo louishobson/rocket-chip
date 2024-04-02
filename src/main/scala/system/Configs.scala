@@ -24,8 +24,8 @@ class BaseConfig extends Config(
 class DefaultConfig extends Config(new WithNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
 
 class EntanglingIPrefetcherBaseConfig(
-  nSets: Int = 64,
-  nWays: Int = 2
+  nSets: Int = 128,
+  nWays: Int = 4
 ) extends Config(
   new WithL1ICacheProfiling ++ 
   new WithNPerfCounters(16) ++
