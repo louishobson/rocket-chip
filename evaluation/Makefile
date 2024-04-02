@@ -7,8 +7,7 @@ RESULTS_DIR := $(EVAL_DIR)/results/$(SUBDIR)
 MILL := mill --no-server 
 PROJECT := freechips.rocketchip.system
 
-CONFIGS := \
-	EntanglingIPrefetcherNoPrefetcherBaselineConfig \
+TABLESIZE_CONFIGS := \
 	EntanglingIPrefetcherTableSize016Sets2WaysConfig \
 	EntanglingIPrefetcherTableSize016Sets4WaysConfig \
 	EntanglingIPrefetcherTableSize016Sets8WaysConfig \
@@ -26,7 +25,9 @@ CONFIGS := \
 	EntanglingIPrefetcherTableSize256Sets8WaysConfig \
 	EntanglingIPrefetcherTableSize512Sets2WaysConfig \
 	EntanglingIPrefetcherTableSize512Sets4WaysConfig \
-	EntanglingIPrefetcherTableSize512Sets8WaysConfig \
+	EntanglingIPrefetcherTableSize512Sets8WaysConfig
+
+CACHESIZE_CONFIGS := \
 	EntanglingIPrefetcherICacheSize064Sets2WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize064Sets4WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize128Sets2WaysNoPrefetcherConfig \
@@ -42,7 +43,9 @@ CONFIGS := \
 	EntanglingIPrefetcherICacheSize256Sets2WaysWithPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize256Sets4WaysWithPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize512Sets2WaysWithPrefetcherConfig \
-	EntanglingIPrefetcherICacheSize512Sets4WaysWithPrefetcherConfig \
+	EntanglingIPrefetcherICacheSize512Sets4WaysWithPrefetcherConfig 
+
+MAX_ENTANGLINGS_CONFIGS := \
 	EntanglingIPrefetcherMaxEntanglings1UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings2UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings3UncompressedConfig \
@@ -56,30 +59,49 @@ CONFIGS := \
 	EntanglingIPrefetcherMaxEntanglings5CompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings6CompressedConfig
 
-ALL_BUILD_TARGETS 			= $(patsubst %,build-%,$(CONFIGS))
-RADIOSITY_RUN_TARGETS 		= $(patsubst %,run-radiosity-%,$(CONFIGS))
-BARNES_RUN_TARGETS 			= $(patsubst %,run-barnes-%,$(CONFIGS))
-WATER_SPATIAL_RUN_TARGETS 	= $(patsubst %,run-water-spatial-%,$(CONFIGS))
-ALL_RUN_TARGETS 			= $(RADIOSITY_RUN_TARGETS) $(BARNES_RUN_TARGETS) $(WATER_SPATIAL_RUN_TARGETS)
+CONFIGS := \
+	EntanglingIPrefetcherNoPrefetcherBaselineConfig \
+	$(TABLESIZE_CONFIGS) \
+	$(CACHESIZE_CONFIGS) \
+	$(MAX_ENTANGLINGS_CONFIGS)
 
-BUILD_CONFIG 				= $(patsubst build-%,%,$@)
-RADIOSITY_RUN_CONFIG 		= $(patsubst run-radiosity-%,%,$@)
-BARNES_RUN_CONFIG 			= $(patsubst run-barnes-%,%,$@)
-WATER_SPATIAL_RUN_CONFIG 	= $(patsubst run-water-spatial-%,%,$@)
+ALL_BUILD_TARGETS             = $(patsubst %,build.%,$(CONFIGS))
+TABLESIZE_BUILD_TARGETS       = $(patsubst %,build.%,$(TABLESIZE_CONFIGS))
+CACHESIZE_BUILD_TARGETS       = $(patsubst %,build.%,$(CACHESIZE_CONFIGS))
+MAX_ENTANGLINGS_BUILD_TARGETS = $(patsubst %,build.%,$(MAX_ENTANGLINGS_CONFIGS))
 
-build: $(ALL_BUILD_TARGETS)
+RADIOSITY_RUN_TARGETS 	  = $(patsubst %,run-radiosity.%,$(CONFIGS))
+BARNES_RUN_TARGETS 		  = $(patsubst %,run-barnes.%,$(CONFIGS))
+WATER_SPATIAL_RUN_TARGETS = $(patsubst %,run-water-spatial.%,$(CONFIGS))
 
-build-%::
+TABLESIZE_RUN_TARGETS       = $(patsubst %,run-radiosity.%,$(TABLESIZE_CONFIGS)) $(patsubst %,run-barnes.%,$(TABLESIZE_CONFIGS)) $(patsubst %,run-water-spatial.%,$(TABLESIZE_CONFIGS))
+CACHESIZE_RUN_TARGETS       = $(patsubst %,run-radiosity.%,$(CACHESIZE_CONFIGS)) $(patsubst %,run-barnes.%,$(CACHESIZE_CONFIGS)) $(patsubst %,run-water-spatial.%,$(CACHESIZE_CONFIGS))
+MAX_ENTANGLINGS_RUN_TARGETS = $(patsubst %,run-radiosity.%,$(MAX_ENTANGLINGS_CONFIGS)) $(patsubst %,run-barnes.%,$(MAX_ENTANGLINGS_CONFIGS)) $(patsubst %,run-water-spatial.%,$(MAX_ENTANGLINGS_CONFIGS))
+
+ALL_RUN_TARGETS 		  = $(RADIOSITY_RUN_TARGETS) $(BARNES_RUN_TARGETS) $(WATER_SPATIAL_RUN_TARGETS)
+
+BUILD_CONFIG 			 = $(patsubst build.%,%,$@)
+RADIOSITY_RUN_CONFIG 	 = $(patsubst run-radiosity.%,%,$@)
+BARNES_RUN_CONFIG 		 = $(patsubst run-barnes.%,%,$@)
+WATER_SPATIAL_RUN_CONFIG = $(patsubst run-water-spatial.%,%,$@)
+
+build-all: $(ALL_BUILD_TARGETS)
+
+build.%::
 	if [ ! -f $(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(BUILD_CONFIG)/verilator/elf.dest/emulator ]; \
 	then \
 		cd $(BASE_DIR) && $(MILL) emulator[$(PROJECT).TestHarness,$(PROJECT).$(BUILD_CONFIG)].elf; \
 	fi
 
-run: $(ALL_RUN_TARGETS)
+run-all: $(ALL_RUN_TARGETS)
 
-run-all-%: run-radiosity-% run-barnes-% run-water-spatial-%
+run-all-tablesize: $(TABLESIZE_RUN_TARGETS)
+run-all-cachesize: $(CACHESIZE_RUN_TARGETS)
+run-all-max-entanglings: $(MAX_ENTANGLINGS_RUN_TARGETS)
 
-run-radiosity-%::
+run-all.%: run-radiosity.% run-barnes.% run-water-spatial.%;
+	
+run-radiosity.%::
 	mkdir -p "$(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)"
 	if [ ! -f $(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)/radiosity.output ]; \
 	then \
@@ -90,7 +112,7 @@ run-radiosity-%::
 			| spike-dasm >"$(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)/radiosity.log"; \
 	fi
 
-run-barnes-%::
+run-barnes.%::
 	mkdir -p "$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)"
 	if [ ! -f "$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)/barnes.output" ]; \
 	then \
@@ -100,7 +122,7 @@ run-barnes-%::
 			| spike-dasm >"$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)/barnes.log"; \
 	fi
 
-run-water-spatial-%::
+run-water-spatial.%::
 	mkdir -p "$(RESULTS_DIR)/$(WATER_SPATIAL_RUN_CONFIG)"
 	if [ ! -f "$(RESULTS_DIR)/$(WATER_SPATIAL_RUN_CONFIG)/water_spatial.output" ]; \
 	then \
