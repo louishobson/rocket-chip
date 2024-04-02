@@ -45,9 +45,9 @@ class EntanglingIPrefetcherBaseConfig(
 )
 
 class EntanglingIPrefetcherConfig(
-  nSets : Int = 64,
-  nWays: Int = 2,
-  entanglingNSets: Int = 512,
+  nSets : Int = 128,
+  nWays: Int = 4,
+  entanglingNSets: Int = 128,
   entanglingNWays: Int = 4,
   entanglingAddrBits: Int = 60, 
   maxEntanglings: Int = 6
