@@ -266,13 +266,13 @@ trait Emulator extends Cross.Module2[String, String] {
 
     def elf = T.persistent {
       mill.util.Jvm.runSubprocess(Seq("cmake", "-G", "Ninja", "-S", cmakefileLists().path, "-B", T.dest.toString, "-Wno-dev").map(_.toString), Map[String, String](), T.dest)
-      mill.util.Jvm.runSubprocess(Seq("ninja", "-j12", "-C", T.dest, "emulator").map(_.toString), Map[String, String](), T.dest)
+      mill.util.Jvm.runSubprocess(Seq("ninja", "-j24", "-C", T.dest, "emulator").map(_.toString), Map[String, String](), T.dest)
       PathRef(T.dest / "emulator")
     }
 
     def elf_trace = T.persistent {
       mill.util.Jvm.runSubprocess(Seq("cmake", "-G", "Ninja", "-S", cmakefileLists().path, "-B", T.dest.toString, "-Wno-dev").map(_.toString), Map[String, String](), T.dest)
-      mill.util.Jvm.runSubprocess(Seq("ninja", "-j12", "-C", T.dest, "emulator.trace").map(_.toString), Map[String, String](), T.dest)
+      mill.util.Jvm.runSubprocess(Seq("ninja", "-j24", "-C", T.dest, "emulator.trace").map(_.toString), Map[String, String](), T.dest)
       PathRef(T.dest / "emulator")
     }
   }
