@@ -22,3 +22,4 @@ rocketchip.jar
 scratch/
 evaluation/results/*
 !evaluation/results/Core/
+!evaluation/results/Core2/

@@ -49,8 +49,8 @@ class EntanglingIPrefetcherConfig(
   nWays: Int = 4,
   entanglingNSets: Int = 128,
   entanglingNWays: Int = 4,
-  entanglingAddrBits: Int = 60, 
-  maxEntanglings: Int = 6
+  entanglingAddrBits: Int = 44, 
+  maxEntanglings: Int = 4
 ) extends Config(
   new WithEntanglingIPrefetcherTableSize(entanglingNSets, entanglingNWays) ++
   new WithEntanglingIPrefetcherCompressionCfg(entanglingAddrBits, maxEntanglings) ++
