@@ -43,6 +43,12 @@ case class EntanglingIPrefetcherParams(
   entanglingAddrBits: Int = 60,
   /* The maximum number of entanglings which can be stored in entanglingAddrBits */
   maxEntanglings: Int = 6,
+  /* A constant to take into account the latency from entangling table request to memory request.
+   * Defaults to 0 but can be changed to take into account the L2 memory bandwidth.
+   * Perhaps expect the MSHR to be full when the prefetch reaches the I$, and for several other prefetches
+   * to be also waiting. Some small multiple of the L2 response cycles is therefore sensible.
+   */
+  prefetchIssueLatency: Int = 0,
   /* Settings for profiling */
   profilingHistBufLen: Int = 16
 )
@@ -70,6 +76,8 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def nPrefetchMSHRs = entanglingParams.nPrefetchMSHRs
   def entanglingAddrBits = entanglingParams.entanglingAddrBits
   def maxEntanglings = entanglingParams.maxEntanglings
+  def prefetchIssueLatency = entanglingParams.prefetchIssueLatency
+  def profilingHistBufLen = entanglingParams.profilingHistBufLen
 
   /* The block address size */
   def baddrBits = paddrBits - blockOffBits
@@ -874,7 +882,7 @@ class PrefetchQueue(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Queue the input. The queue leads straight into a register, 
    * so it makes sense to enable flow-through. 
    */
-  val req_q = Queue(io.req, prefetchQueueSize, flow=true)
+  val req_q = Queue(io.req, prefetchQueueSize, pipe=true, flow=true)
 
   /* The current BB being distributed */
   val current_req = RegInit((new EntanglingTablePrefetchResp).Lit(_.size -> 0.U))
@@ -972,7 +980,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   assert(!history_buffer.io.search_req.valid || history_buffer.io.search_req.ready)
   history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
   history_buffer.io.search_req.bits.dst := miss_baddr
-  history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (time - bb_counter.io.resp.time)
+  history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (time - bb_counter.io.resp.time + prefetchIssueLatency.U)
 
 
 
@@ -1026,10 +1034,12 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   *   - the expected number of baddrs were dropped during encoding,
   *   - and the first baddr in the input sequence is present in the output sequence.
   */
-class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int)(implicit val p: Parameters) 
-    extends UnitTest 
-    with HasEntanglingIPrefetcherParameters 
-{
+class EntanglingTest(
+  id: Int, 
+  head: Int, 
+  baddrs: Seq[Int], 
+  exp_drops: Int
+)(implicit val p: Parameters) extends UnitTest with HasEntanglingIPrefetcherParameters {
   /* The tests must be within a UnitTestModule */
   class Impl extends UnitTestModule {
     /* Create an encoder and decoder */
@@ -1107,10 +1117,11 @@ class EntanglingTest(id: Int, head: Int, baddrs: Seq[Int], exp_drops: Int)(impli
   * @param out The sequence of responses to expect from the BB counter. The corresponding response for 
   * a request is checked the cycle after that request is made. 
   */
-class BBCounterTest(id: Int, in: Seq[(BBCounterReq, Bool)], out: Seq[BBCounterResp])(implicit val p: Parameters) 
-    extends UnitTest 
-    with HasEntanglingIPrefetcherParameters 
-{
+class BBCounterTest(
+  id: Int, 
+  in: Seq[(BBCounterReq, Bool)], 
+  out: Seq[BBCounterResp]
+)(implicit val p: Parameters) extends UnitTest with HasEntanglingIPrefetcherParameters {
   /* The tests must be within a UnitTestModule */
   class Impl extends UnitTestModule {
 
@@ -1167,10 +1178,13 @@ class BBCounterTest(id: Int, in: Seq[(BBCounterReq, Bool)], out: Seq[BBCounterRe
   * @param query A search request to make after delay cycles.
   * @param out A response to expect from the search request, or no response.
   */
-class HistoryBufferTest(id: Int, in: Seq[HistoryBufferInsertReq], delay: Int, query: HistoryBufferSearchReq, out: Option[HistoryBufferSearchResp])(implicit val p: Parameters) 
-    extends UnitTest 
-    with HasEntanglingIPrefetcherParameters 
-{
+class HistoryBufferTest(
+  id: Int, 
+  in: Seq[HistoryBufferInsertReq], 
+  delay: Int, 
+  query: HistoryBufferSearchReq, 
+  out: Option[HistoryBufferSearchResp]
+)(implicit val p: Parameters) extends UnitTest with HasEntanglingIPrefetcherParameters {
   /* The tests must be within a UnitTestModule */
   class Impl extends UnitTestModule {
     
@@ -1240,6 +1254,10 @@ class HistoryBufferTest(id: Int, in: Seq[HistoryBufferInsertReq], delay: Int, qu
 /** [[EntanglingTableTest]] instruments tests for the entangling table.
   *
   * @param id The ID of the test (for debugging purposes).
+  * @param updateReq: A sequence of update requests to be made with a period of 8 clock cycles.
+  * @param entangleReq: A sequence of entangle requests to be made with a period of 8 clock cycles, after all update requests have been made.
+  * @param prefetchReq: A sequence of prefetch requests to be made with a period of 8 clock cycles, after all entangle requests have been made.
+  * @param prefetchResp: A sequence of prefetch responses to expect in the given order.
   */
 class EntanglingTableTest(
   id: Int, 

@@ -1,0 +1,4 @@
+nSets: 64
+nWays: 2
+entanglingNSets: 512
+entanglingNWays: 4

@@ -2,11 +2,11 @@ package freechips.rocketchip.rocket
 
 import chisel3._
 import chisel3.experimental.BundleLiterals._
-import chisel3.util.{Decoupled, RegEnable, log2Up}
+import chisel3.util.{Decoupled, Queue, RegEnable, log2Up}
 import freechips.rocketchip.amba.AMBAProt
 import freechips.rocketchip.tile.{CoreBundle, CoreModule}
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.util.{SeqToAugmentedSeq, Split}
+import freechips.rocketchip.util.{SeqToAugmentedSeq, ExposedShiftQueue, Split}
 import org.chipsalliance.cde.config.Parameters
 
 class IMSHRReq(implicit p: Parameters) extends CoreBundle with HasL1ICacheParameters {
@@ -41,9 +41,6 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val soft_prefetch = Input(Bool())
   })
 
-  /* We are ready for a response when it either had no data (meaning it is a hint response), or the I$ is ready */
-  io.d_channel.ready := !edge.hasData(io.d_channel.bits) || io.resp.ready
-
   /* Define the status registers */
   val status = RegInit(VecInit(Seq.fill(nPrefetchMSHRs+1)((new Bundle {
     val index = UInt(idxBits.W)
@@ -52,31 +49,58 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val demand = Bool()
   }).Lit(_.valid -> false.B))))
 
+  /* Create filters to always consume requests which are already in the MSHR */
+  val demand_filt   = Wire(Decoupled(new IMSHRReq))
+  val prefetch_filt = Wire(Decoupled(new IMSHRReq))
+
+  /* Create input queues in order to cache memory requests and service them as fast as possible */
+  val (demand_q,   demand_q_elts  ) = ExposedShiftQueue(demand_filt,   entries=1, pipe=true, flow=true)
+  val (prefetch_q, prefetch_q_elts) = ExposedShiftQueue(prefetch_filt, entries=4, pipe=true, flow=true)
+
+  /* Detect whether an incomming demand or prefetch request corresponds to an already-inflight request.
+   * This is a request with a matching physical address that is either already in the MSHR, or queued.
+   */
+  val demand_inflight = status.map(s => s.valid && s.paddr === io.demand_req.bits.paddr).asUInt.orR || 
+    demand_q_elts.map  (r => r.valid && r.bits.paddr === io.demand_req.bits.paddr).asUInt.orR || 
+    prefetch_q_elts.map(r => r.valid && r.bits.paddr === io.demand_req.bits.paddr).asUInt.orR
+  val prefetch_inflight = status.map(s => s.valid && s.paddr === io.prefetch_req.bits.paddr).asUInt.orR || 
+    demand_q_elts.map  (r => r.valid && r.bits.paddr === io.prefetch_req.bits.paddr).asUInt.orR || 
+    prefetch_q_elts.map(r => r.valid && r.bits.paddr === io.prefetch_req.bits.paddr).asUInt.orR ||
+    (io.demand_req.valid && io.demand_req.bits.paddr === io.prefetch_req.bits.paddr)
+
+  /* Always accept but immediately discard duplicate requests */
+  demand_filt.valid   := io.demand_req.valid   && !demand_inflight
+  prefetch_filt.valid := io.prefetch_req.valid && !prefetch_inflight
+  demand_filt.bits   := io.demand_req.bits
+  prefetch_filt.bits := io.prefetch_req.bits  
+  io.demand_req.ready   := demand_filt.ready   || demand_inflight
+  io.prefetch_req.ready := prefetch_filt.ready || prefetch_inflight
+
+  /* We are ready for a response when it either had no data (meaning it is a hint response), or the I$ is ready */
+  io.d_channel.ready := !edge.hasData(io.d_channel.bits) || io.resp.ready
+
   /* Whether we could accept another request (ignoring whether the TL channel is ready) */
-  val can_accept_demand_req = io.demand_req.valid && !status.map(_.valid).asUInt.andR
-  val can_accept_prefetch_req = hasPrefetcher.B && io.prefetch_req.valid && !status.tail.map(_.valid).asUInt.andR
+  val can_accept_demand_req = demand_q.valid && !status.map(_.valid).asUInt.andR
+  val can_accept_prefetch_req = hasPrefetcher.B && prefetch_q.valid && !status.tail.map(_.valid).asUInt.andR
 
   /* We will accept the next demand request whenever we have space and the A TL port is ready */
-  io.demand_req.ready := can_accept_demand_req && io.a_channel.ready
+  demand_q.ready := can_accept_demand_req && io.a_channel.ready
 
   /* We will accept the next prefetch request when
    *  - The prefetcher is enabled,
-   *  - there is a valid request (io.prefetch_req.valid is asserted),
+   *  - there is a valid request (prefetch_q.valid is asserted),
    *  - we have space,
    *  - the A TL port is ready, and
    *  - a demand request isn't currently being accepted.
    */
-  io.prefetch_req.ready := can_accept_prefetch_req && !can_accept_demand_req && io.a_channel.ready
+ prefetch_q.ready := can_accept_prefetch_req && !can_accept_demand_req && io.a_channel.ready
 
   /* Get the next request */
-  val req = Mux(can_accept_demand_req, io.demand_req.bits, io.prefetch_req.bits)
+  val req = Mux(can_accept_demand_req, demand_q.bits, prefetch_q.bits)
   assert(req.paddr(blockOffBits-1,0) === 0.U)
 
-  /* Check if the request is already in flight */
-  val req_in_flight = status.map(s => s.valid && s.paddr === req.paddr).asUInt.orR
-
   /* Default the channel */
-  io.a_channel.valid := io.sending_hint || ((can_accept_demand_req || can_accept_prefetch_req) && !req_in_flight)
+  io.a_channel.valid := io.sending_hint || can_accept_demand_req || can_accept_prefetch_req
   io.a_channel.bits := DontCare
 
   /* Set the bits of the A channel */
