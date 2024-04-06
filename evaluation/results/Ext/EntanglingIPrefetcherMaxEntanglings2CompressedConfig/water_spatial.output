@@ -1,0 +1,62 @@
+Using 1 procs on 3 steps of 64 mols
+Other parameters:
+	TSTEP = 1.50e-18
+	NORDER = 6
+	NSAVE = -1
+	NRST = 3000
+	NPRINT = 3
+	NFMC = 0
+	CUTOFF = 6.212752
+
+8 boxes with 1 processors
+
+
+TEMPERATURE                =   298.00 K
+DENSITY                    =  0.99800 G/C.C.
+NUMBER OF MOLECULES        =       64
+NUMBER OF PROCESSORS       =        1
+TIME STEP                  = 1.50e-03 SEC
+ORDER USED TO SOLVE F=MA   =        6 
+NO. OF TIME STEPS          =        3 
+FREQUENCY OF DATA SAVING   =       -1 
+FREQUENCY TO WRITE RST FILE=     3000 
+xprocs = 1	yprocs = 1	zprocs = 1
+x_inc = 2	 y_inc = 2	 z_inc = 2
+x_left = 0	 y_left = 0	 z_left = 0
+SPHERICAL CUTOFF RADIUS    =   6.2128 ANGSTROM
+
+NS = 3.9999999999999893
+BOXL =  12.425505
+CUTOFF =   6.212752
+BOX_LENGTH =   6.212752
+BOX_PER_SIDE = 2
+XS =   3.106376
+ZERO = 1.55319
+WCOS = 0.585882
+WSIN = 0.756950
+***** NEW RUN STARTING FROM REGULAR LATTICE *****
+         3     2149.89083   2041.73060      1.68734     -1.23204 
+         4192.077     583613.46461         -5.37280
+Cycles: 87316654
+Time: 873166
+Instret: 29550175
+I$ response: 40271813
+I$ miss: 131680
+Demand refill: 104909
+Prefetch refill: 501257
+Prefetch consumed: 13300697
+Late prefetch: 33821
+Early prefetch: 327
+No prefetch: 69694
+Erroneous prefetch: 5267
+Demand miss cycles: 3114506
+Branch midpredict: 342974
+COMPUTESTART (after initialization) = 12654521
+COMPUTEEND = 93030968
+COMPUTETIME (after initialization) = 80376447
+Measured Time (2nd timestep onward) = 47649833
+Intramolecular time only (2nd timestep onward) = 773810
+Intermolecular time only (2nd timestep onward) = 46238182
+Other time (2nd timestep onward) = 637841
+
+Exited Happily with XTT = 4192.08 (note: XTT value is garbage if NPRINT > NSTEP)

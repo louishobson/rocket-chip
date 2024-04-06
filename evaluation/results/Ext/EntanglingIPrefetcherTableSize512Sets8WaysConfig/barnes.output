@@ -1,0 +1,28 @@
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+       512   0.02500    0.0500      1.00     0.250     0.100      2.00         1
+
+COMPUTESTART  =      7742475
+Cycles: 121197641
+Time: 1211981
+Instret: 40866091
+I$ response: 74029560
+I$ miss: 102425
+Demand refill: 77635
+Prefetch refill: 346321
+Prefetch consumed: 4631739
+Late prefetch: 64338
+Early prefetch: 35
+No prefetch: 17735
+Erroneous prefetch: 563
+Demand miss cycles: 2284915
+Branch midpredict: 602370
+COMPUTEEND    =    124580284
+COMPUTETIME   =    116837809
+TRACKTIME     =     69619059
+PARTITIONTIME =       336448	 0.00
+TREEBUILDTIME =      2597133	 0.04
+FORCECALCTIME =     66384310	 0.95
+RESTTIME      =       301168	 0.00

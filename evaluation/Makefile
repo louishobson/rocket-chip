@@ -8,7 +8,12 @@ MILL := mill --no-server
 PROJECT := freechips.rocketchip.system
 
 TABLESIZE_CONFIGS := \
-TABLESIZE_CONFIGS := \
+	EntanglingIPrefetcherTableSize004Sets2WaysConfig \
+	EntanglingIPrefetcherTableSize004Sets4WaysConfig \
+	EntanglingIPrefetcherTableSize004Sets8WaysConfig \
+	EntanglingIPrefetcherTableSize008Sets2WaysConfig \
+	EntanglingIPrefetcherTableSize008Sets4WaysConfig \
+	EntanglingIPrefetcherTableSize008Sets8WaysConfig \
 	EntanglingIPrefetcherTableSize016Sets2WaysConfig \
 	EntanglingIPrefetcherTableSize016Sets4WaysConfig \
 	EntanglingIPrefetcherTableSize016Sets8WaysConfig \
@@ -29,9 +34,6 @@ TABLESIZE_CONFIGS := \
 	EntanglingIPrefetcherTableSize512Sets8WaysConfig
 
 CACHESIZE_CONFIGS := \
-	EntanglingIPrefetcherTableSize512Sets8WaysConfig
-
-CACHESIZE_CONFIGS := \
 	EntanglingIPrefetcherICacheSize064Sets2WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize064Sets4WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize128Sets2WaysNoPrefetcherConfig \
@@ -47,9 +49,6 @@ CACHESIZE_CONFIGS := \
 	EntanglingIPrefetcherICacheSize256Sets2WaysWithPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize256Sets4WaysWithPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize512Sets2WaysWithPrefetcherConfig \
-	EntanglingIPrefetcherICacheSize512Sets4WaysWithPrefetcherConfig 
-
-MAX_ENTANGLINGS_CONFIGS := \
 	EntanglingIPrefetcherICacheSize512Sets4WaysWithPrefetcherConfig 
 
 MAX_ENTANGLINGS_CONFIGS := \
@@ -98,7 +97,6 @@ build-all::
 	$(MAKE) $(ALL_BUILD_TARGETS)
 
 build.%::
-build.%::
 	if [ ! -f $(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(BUILD_CONFIG)/verilator/elf.dest/emulator ]; \
 	then \
 		cd $(BASE_DIR) && $(MILL) emulator[$(PROJECT).TestHarness,$(PROJECT).$(BUILD_CONFIG)].elf; \
@@ -129,7 +127,6 @@ run-radiosity.%::
 	fi
 
 run-barnes.%::
-run-barnes.%::
 	mkdir -p "$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)"
 	if [ ! -f "$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)/barnes.output" ]; \
 	then \
@@ -139,7 +136,6 @@ run-barnes.%::
 			| spike-dasm >"$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)/barnes.log"; \
 	fi
 
-run-water-spatial.%::
 run-water-spatial.%::
 	mkdir -p "$(RESULTS_DIR)/$(WATER_SPATIAL_RUN_CONFIG)"
 	if [ ! -f "$(RESULTS_DIR)/$(WATER_SPATIAL_RUN_CONFIG)/water_spatial.output" ]; \
