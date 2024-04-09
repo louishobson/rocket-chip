@@ -8,6 +8,9 @@ MILL := mill --no-server
 PROJECT := freechips.rocketchip.system
 
 TABLESIZE_CONFIGS := \
+	EntanglingIPrefetcherTableSize002Sets2WaysConfig \
+	EntanglingIPrefetcherTableSize002Sets4WaysConfig \
+	EntanglingIPrefetcherTableSize002Sets8WaysConfig \
 	EntanglingIPrefetcherTableSize004Sets2WaysConfig \
 	EntanglingIPrefetcherTableSize004Sets4WaysConfig \
 	EntanglingIPrefetcherTableSize004Sets8WaysConfig \
