@@ -57,7 +57,5 @@ class GenericHistoryBuffer[T <: Data](typ: T, length: Int) extends Module {
                 io.query_result := true.B
             }
         })
-    } .otherwise {
-        /* If there was no query operation then we don't care about the result output */
     }
 }

@@ -51,8 +51,10 @@ class EntanglingIPrefetcherConfig(
   entanglingNSets: Int = 128,
   entanglingNWays: Int = 4,
   entanglingAddrBits: Int = 44, 
-  maxEntanglings: Int = 4
+  maxEntanglings: Int = 4,
+  disableEntangling: Boolean = false,
 ) extends Config(
+  new WithEntanglingIPrefetcherDisableEntangling(disableEntangling) ++
   new WithEntanglingIPrefetcherIssueLatency(24) ++
   new WithEntanglingIPrefetcherTableSize(entanglingNSets, entanglingNWays) ++
   new WithEntanglingIPrefetcherCompressionCfg(entanglingAddrBits, maxEntanglings) ++
@@ -63,6 +65,8 @@ class EntanglingIPrefetcherConfig(
 )
 
 class EntanglingIPrefetcherNoPrefetcherBaselineConfig extends EntanglingIPrefetcherBaseConfig
+
+class EntanglingIPrefetcherNoEntanglingConfig extends EntanglingIPrefetcherConfig(disableEntangling=true)
 
 class EntanglingIPrefetcherMaxEntanglings1CompressedConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26, maxEntanglings=1) //26
 class EntanglingIPrefetcherMaxEntanglings2CompressedConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=32, maxEntanglings=2) //32, 16

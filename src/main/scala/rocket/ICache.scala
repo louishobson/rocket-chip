@@ -993,7 +993,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
         miss_history.io.query.valid := true.B
         miss_history.io.query.bits := prefetcher.io.prefetch_resp.bits.paddr
 
-        /* We have a late prefetch when we have a hit in the miss history buffer */
+        /* !! LATE PREFETCH !! We have a late prefetch when we have a hit in the miss history buffer */
         io.extPerf.get.late_prefetch := miss_history.io.query_result
       } .otherwise {
         /* Tie off the performance monitors */

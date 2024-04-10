@@ -50,7 +50,13 @@ case class EntanglingIPrefetcherParams(
    */
   prefetchIssueLatency: Int = 0,
   /* Settings for profiling */
-  profilingHistBufLen: Int = 16
+  profilingHistBufLen: Int = 16,
+  /* An option to disable all entangling (but keep prefetching basic blocks). 
+   * This is for exploritory purposes, with the aim of determining the benefit of entangling. 
+   * When set, the entangling table is still set up assuming that there will be entanglings,
+   * but the history buffer is removed and the entangling table IO for entangling creation is tied off.
+   */
+  disableEntangling: Boolean = false,
 )
 
 /** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams
@@ -78,6 +84,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def maxEntanglings = entanglingParams.maxEntanglings
   def prefetchIssueLatency = entanglingParams.prefetchIssueLatency
   def profilingHistBufLen = entanglingParams.profilingHistBufLen
+  def disableEntangling = entanglingParams.disableEntangling
 
   /* The block address size */
   def baddrBits = paddrBits - blockOffBits
@@ -962,28 +969,6 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
 
 
 
-  /* Create the history buffer */
-  val history_buffer = Module(new HistoryBuffer)
-
-  /* Link up the insertion IO */
-  history_buffer.io.insert_req.valid := bb_counter.io.resp.done
-  history_buffer.io.insert_req.bits.head := bb_counter.io.resp.head
-  history_buffer.io.insert_req.bits.time := bb_counter.io.resp.time
-
-  /* Link up the search IO. We don't need to search if
-   *  - the miss is invalid, or
-   *  - the miss address isn't for this BB's head.
-   * Assert that the history buffer is ready for a search. If it isn't then something strange has happened:
-   * a search request only comes in on a refill finishing, and a refill takes at least eight cycles.
-   */
-  val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
-  assert(!history_buffer.io.search_req.valid || history_buffer.io.search_req.ready)
-  history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
-  history_buffer.io.search_req.bits.dst := miss_baddr
-  history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (time - bb_counter.io.resp.time + prefetchIssueLatency.U)
-
-
-
   /* Create the entangling table */
   val entangling_table = Module(new EntanglingTable)
 
@@ -999,14 +984,39 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   entangling_table.io.update_req.bits.vidx := bb_counter.io.resp.vidx
   entangling_table.io.update_req.bits.size := bb_counter.io.resp.size
 
-  /* Link up the entangling creation IO.
-   * We don't want to entangle an address with itself. 
-   * If the the history buffer search produced a source address equal to the destination,
-   * then we just won't make an entangling.
-   */
-  entangling_table.io.entangle_req.valid := history_buffer.io.search_resp.valid && entangling_table.io.entangle_req.bits.src =/= entangling_table.io.entangle_req.bits.dst
-  entangling_table.io.entangle_req.bits.src := history_buffer.io.search_resp.bits.src
-  entangling_table.io.entangle_req.bits.dst := history_buffer.io.search_resp.bits.dst
+
+
+  /* We only need a history buffer if entangling is enabled */
+  if (!disableEntangling) {
+    /* Create the history buffer */
+    val history_buffer = Module(new HistoryBuffer)
+
+    /* Link up the insertion IO */
+    history_buffer.io.insert_req.valid := bb_counter.io.resp.done
+    history_buffer.io.insert_req.bits.head := bb_counter.io.resp.head
+    history_buffer.io.insert_req.bits.time := bb_counter.io.resp.time
+
+    /* Link up the search IO. We don't need to search if
+    *  - the miss is invalid, or
+    *  - the miss address isn't for this BB's head.
+    * Assert that the history buffer is ready for a search. If it isn't then something strange has happened:
+    * a search request only comes in on a refill finishing, and a refill takes at least eight cycles.
+    */
+    val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
+    assert(!history_buffer.io.search_req.valid || history_buffer.io.search_req.ready)
+    history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
+    history_buffer.io.search_req.bits.dst := miss_baddr
+    history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (time - bb_counter.io.resp.time + prefetchIssueLatency.U)
+
+    /* Link up the entangling creation IO */
+    entangling_table.io.entangle_req.valid := history_buffer.io.search_resp.valid
+    entangling_table.io.entangle_req.bits.src := history_buffer.io.search_resp.bits.src
+    entangling_table.io.entangle_req.bits.dst := history_buffer.io.search_resp.bits.dst
+  } else {
+    /* Tie-off the entangling creation IO */
+    entangling_table.io.entangle_req.valid := false.B
+    entangling_table.io.entangle_req.bits := DontCare
+  }
 
 
 

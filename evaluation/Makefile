@@ -55,6 +55,7 @@ CACHESIZE_CONFIGS := \
 	EntanglingIPrefetcherICacheSize512Sets4WaysWithPrefetcherConfig 
 
 MAX_ENTANGLINGS_CONFIGS := \
+	EntanglingIPrefetcherNoEntanglingConfig \
 	EntanglingIPrefetcherMaxEntanglings1UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings2UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings3UncompressedConfig \
