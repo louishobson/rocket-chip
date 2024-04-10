@@ -319,6 +319,10 @@ object emulator extends Cross[Emulator](
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize512Sets4WaysConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize512Sets8WaysConfig"),
 
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize016Sets2WaysNoPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize016Sets4WaysNoPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize032Sets2WaysNoPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize032Sets4WaysNoPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize064Sets2WaysNoPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize064Sets4WaysNoPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize128Sets2WaysNoPrefetcherConfig"),
@@ -328,6 +332,10 @@ object emulator extends Cross[Emulator](
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize512Sets2WaysNoPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize512Sets4WaysNoPrefetcherConfig"),
 
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize016Sets2WaysWithPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize016Sets4WaysWithPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize032Sets2WaysWithPrefetcherConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize032Sets4WaysWithPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize064Sets2WaysWithPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize064Sets4WaysWithPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize128Sets2WaysWithPrefetcherConfig"),

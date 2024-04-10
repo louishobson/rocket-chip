@@ -37,6 +37,10 @@ TABLESIZE_CONFIGS := \
 	EntanglingIPrefetcherTableSize512Sets8WaysConfig
 
 CACHESIZE_CONFIGS := \
+	EntanglingIPrefetcherICacheSize016Sets2WaysNoPrefetcherConfig \
+	EntanglingIPrefetcherICacheSize016Sets4WaysNoPrefetcherConfig \
+	EntanglingIPrefetcherICacheSize032Sets2WaysNoPrefetcherConfig \
+	EntanglingIPrefetcherICacheSize032Sets4WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize064Sets2WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize064Sets4WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize128Sets2WaysNoPrefetcherConfig \
@@ -45,6 +49,10 @@ CACHESIZE_CONFIGS := \
 	EntanglingIPrefetcherICacheSize256Sets4WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize512Sets2WaysNoPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize512Sets4WaysNoPrefetcherConfig \
+	EntanglingIPrefetcherICacheSize016Sets2WaysWithPrefetcherConfig \
+	EntanglingIPrefetcherICacheSize016Sets4WaysWithPrefetcherConfig \
+	EntanglingIPrefetcherICacheSize032Sets2WaysWithPrefetcherConfig \
+	EntanglingIPrefetcherICacheSize032Sets4WaysWithPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize064Sets2WaysWithPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize064Sets4WaysWithPrefetcherConfig \
 	EntanglingIPrefetcherICacheSize128Sets2WaysWithPrefetcherConfig \
