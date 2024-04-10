@@ -757,6 +757,14 @@ class WithEntanglingIPrefetcherIssueLatency(issueLatency: Int) extends WithTrans
   prefetchIssueLatency = issueLatency
 ))
 
+class WithL1ICacheNDemandMSHRs(nDemandMSHRs: Int) extends Config((site, here, up) => {
+  case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
+    case tp: RocketTileAttachParams => tp.copy(tileParams = tp.tileParams.copy(
+      icache = tp.tileParams.icache.map(_.copy(nDemandMSHRs = nDemandMSHRs))))
+    case t => t
+  }
+})
+
 class WithL1ICacheProfiling(histBufLen: Int = 16)  extends Config((site, here, up) => {
   case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
     case tp: RocketTileAttachParams => tp.copy(tileParams = tp.tileParams.copy(

@@ -53,6 +53,7 @@ case class ICacheParams(
   fetchBytes: Int = 4,
   entanglingParams: Option[EntanglingIPrefetcherParams] = None,
   enableProfiling: Boolean = false, 
+  nDemandMSHRs: Int = 1,
 ) extends L1CacheParams {
   def tagCode: Code = Code.fromString(tagECC)
   def dataCode: Code = Code.fromString(dataECC)
@@ -148,7 +149,7 @@ class ICache(val icacheParams: ICacheParams, val staticIdForMetadataUseOnly: Int
     */
   val masterNode = TLClientNode(Seq(TLMasterPortParameters.v1(
     clients = Seq(TLMasterParameters.v1(
-      sourceId = IdRange(0, 1 + icacheParams.entanglingParams.map(e => e.nPrefetchMSHRs).getOrElse(icacheParams.prefetch.toInt)), // 0=refill, 1=hint
+      sourceId = IdRange(0, icacheParams.nDemandMSHRs + icacheParams.entanglingParams.map(e => e.nPrefetchMSHRs).getOrElse(icacheParams.prefetch.toInt)), // 0=refill, 1=hint
       name = s"Core ${staticIdForMetadataUseOnly} ICache")),
     requestFields = useVM.option(Seq()).getOrElse(Seq(AMBAProtField())))))
 

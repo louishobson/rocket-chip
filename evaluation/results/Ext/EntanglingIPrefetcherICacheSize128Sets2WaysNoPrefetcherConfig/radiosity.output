@@ -20,25 +20,25 @@ process_tasks (ray)
 process_tasks (ray)
 process_tasks (avg)
 process_tasks (norm)
-Cycles: 82275599
-Time: 822759
-Instret: 34525577
-I$ response: 37341771
-I$ miss: 305656
-Demand refill: 304838
+Cycles: 82112218
+Time: 821124
+Instret: 34527983
+I$ response: 37325954
+I$ miss: 304724
+Demand refill: 304464
 Prefetch refill: 0
 Prefetch consumed: 0
 Late prefetch: 0
 Early prefetch: 0
 No prefetch: 0
 Erroneous prefetch: 0
-Demand miss cycles: 7905257
-Branch midpredict: 450098
+Demand miss cycles: 7737462
+Branch midpredict: 444121
 TIMING STATISTICS MEASURED BY MAIN PROCESS:
-	Overall start time	            11779028
-	Overall end time	            85995471
-	Total time with initialization	            74216443
-	Total time without initialization	            74181998
+	Overall start time	            11773311
+	Overall end time	            85837744
+	Total time with initialization	            74064433
+	Total time without initialization	            74030350
 Rasiosity Statistics
 
     Histogram of interactions/elem

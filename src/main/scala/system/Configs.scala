@@ -38,6 +38,7 @@ class EntanglingIPrefetcherBaseConfig(
 
   new WithInclusiveCache(outerLatencyCycles = 100, nWays = 4, capacityKB = 128) ++
 
+  new WithL1ICacheNDemandMSHRs(2) ++
   new WithL1ICacheWays(nWays) ++ 
   new WithL1ICacheSets(nSets) ++ 
   
@@ -57,6 +58,7 @@ class EntanglingIPrefetcherConfig(
   new WithEntanglingIPrefetcherCompressionCfg(entanglingAddrBits, maxEntanglings) ++
   new WithEntanglingIPrefetcherNPrefetchMSHRs(3) ++ 
   new WithEntanglingIPrefetcher ++ 
+  new WithL1ICacheNDemandMSHRs(1) ++
   new EntanglingIPrefetcherBaseConfig(nSets, nWays)
 )
 

@@ -4,25 +4,25 @@
      nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
        512   0.02500    0.0500      1.00     0.250     0.100      2.00         1
 
-COMPUTESTART  =      8759374
-Cycles: 123507947
-Time: 1235084
-Instret: 40877846
-I$ response: 73942279
-I$ miss: 200588
-Demand refill: 199926
+COMPUTESTART  =      8750672
+Cycles: 123489916
+Time: 1234904
+Instret: 40871515
+I$ response: 73948388
+I$ miss: 200114
+Demand refill: 200036
 Prefetch refill: 0
 Prefetch consumed: 0
 Late prefetch: 0
 Early prefetch: 0
 No prefetch: 0
 Erroneous prefetch: 0
-Demand miss cycles: 5111567
-Branch midpredict: 600363
-COMPUTEEND    =    127372240
-COMPUTETIME   =    118612866
-TRACKTIME     =     70664954
-PARTITIONTIME =       343179	 0.00
-TREEBUILDTIME =      2701162	 0.04
-FORCECALCTIME =     67323645	 0.95
-RESTTIME      =       296968	 0.00
+Demand miss cycles: 5087264
+Branch midpredict: 603391
+COMPUTEEND    =    127360421
+COMPUTETIME   =    118609749
+TRACKTIME     =     70668991
+PARTITIONTIME =       344118	 0.00
+TREEBUILDTIME =      2704912	 0.04
+FORCECALCTIME =     67329714	 0.95
+RESTTIME      =       290247	 0.00

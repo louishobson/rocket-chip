@@ -42,7 +42,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   })
 
   /* Define the status registers */
-  val status = RegInit(VecInit(Seq.fill(nPrefetchMSHRs+1)((new Bundle {
+  val status = RegInit(VecInit(Seq.fill(nMSHRs)((new Bundle {
     val index = UInt(idxBits.W)
     val paddr = UInt(paddrBits.W)
     val valid = Bool()
@@ -81,7 +81,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
 
   /* Whether we could accept another request (ignoring whether the TL channel is ready) */
   val can_accept_demand_req = demand_q.valid && !status.map(_.valid).asUInt.andR
-  val can_accept_prefetch_req = hasPrefetcher.B && prefetch_q.valid && !status.tail.map(_.valid).asUInt.andR
+  val can_accept_prefetch_req = hasPrefetcher.B && prefetch_q.valid && !status.drop(nDemandMSHRs).map(_.valid).asUInt.andR
 
   /* We will accept the next demand request whenever we have space and the A TL port is ready */
   demand_q.ready := can_accept_demand_req && io.a_channel.ready
@@ -107,9 +107,9 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   when(io.a_channel.valid && !io.sending_hint) {
 
     /* Iterate over the possibility of inserting into each register */
-    for(i <- 0 to nPrefetchMSHRs) {
-      val mask = (0 to nPrefetchMSHRs).map(_ < i).map(_.B).asUInt
-      val free = status.tail.map(!_.valid).prepended(!status(0).valid && can_accept_demand_req).asUInt
+    for(i <- 0 until nMSHRs) {
+      val mask = (0 until nMSHRs).map(_ < i).map(_.B).asUInt
+      val free = status.dropRight(nPrefetchMSHRs).map(!_.valid && can_accept_demand_req).appendedAll(status.drop(nDemandMSHRs).map(!_.valid)).asUInt
       when(free(i) && (mask & free) === 0.U) {
 
         /* Make the request to higher-level memory */
@@ -138,10 +138,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val a_fired = RegNext(io.a_channel.fire)
 
     /* Send a prefetch request on the next cycle */
-    when(a_fired && io.soft_prefetch && !hint_outstanding) {
-      /* We should never be able to accept another request here */
-      assert(!can_accept_demand_req)
-
+    when(a_fired && io.soft_prefetch && !hint_outstanding && !can_accept_demand_req) {
       /** [[crosses_page]]  indicate if there is a crosses page access
         * [[next_block]] : the address to be prefetched.
         */
@@ -200,7 +197,9 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   /* Get information about the prefetcher */
   def entanglingParams = cacheParams.entanglingParams
   def hasPrefetcher = entanglingParams.isDefined
+  def nDemandMSHRs = cacheParams.nDemandMSHRs
   def nPrefetchMSHRs = entanglingParams.map(_.nPrefetchMSHRs).getOrElse(0)
+  def nMSHRs = nDemandMSHRs + nPrefetchMSHRs
 
   /* Make a Access request to the L2 memory */
   def createGetRequest(paddr: UInt, cache: Bool, source: Int): TLBundleA = {
