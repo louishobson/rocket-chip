@@ -291,6 +291,8 @@ object emulator extends Cross[Emulator](
   // Prefetcher Configs
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherNoPrefetcherBaselineConfig"),
 
+
+
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize002Sets2WaysConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize002Sets4WaysConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize002Sets8WaysConfig"),
@@ -319,6 +321,8 @@ object emulator extends Cross[Emulator](
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize512Sets4WaysConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize512Sets8WaysConfig"),
 
+
+
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize016Sets2WaysNoPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize016Sets4WaysNoPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize032Sets2WaysNoPrefetcherConfig"),
@@ -332,6 +336,8 @@ object emulator extends Cross[Emulator](
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize512Sets2WaysNoPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize512Sets4WaysNoPrefetcherConfig"),
 
+
+
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize016Sets2WaysWithPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize016Sets4WaysWithPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize032Sets2WaysWithPrefetcherConfig"),
@@ -344,8 +350,13 @@ object emulator extends Cross[Emulator](
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize256Sets4WaysWithPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize512Sets2WaysWithPrefetcherConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherICacheSize512Sets4WaysWithPrefetcherConfig"),
+
+
   
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherNoEntanglingConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherNoEntanglingSmallICacheConfig"),
+
+
 
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1UncompressedConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2UncompressedConfig"),
@@ -354,12 +365,94 @@ object emulator extends Cross[Emulator](
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5UncompressedConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6UncompressedConfig"),
 
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1UncompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2UncompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3UncompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4UncompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5UncompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6UncompressedSmallICacheConfig"),
+
+
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadConfig"),
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadSmallICacheConfig"),
+
+
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoConfig"),
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoSmallICacheConfig"),
+
+
+
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1CompressedConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2CompressedConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3CompressedConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4CompressedConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5CompressedConfig"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6CompressedConfig"),
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1CompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2CompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3CompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4CompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5CompressedSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6CompressedSmallICacheConfig"),
+
+
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadConfig"),
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadSmallICacheConfig"),
+
+
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadTwoConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadTwoConfig"),
+
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadTwoSmallICacheConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadTwoSmallICacheConfig"),
+
+
 
   // RocketSuiteA
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultConfig"),

@@ -731,7 +731,7 @@ class WithTransformedEntanglingIPrefetcherParams(
   }
 })
 
-class WithEntanglingIPrefetcher() extends WithTransformedEntanglingIPrefetcherParams(x=>x, true)
+class WithEntanglingIPrefetcher extends WithTransformedEntanglingIPrefetcherParams(x=>x, true)
 
 class WithEntanglingIPrefetcherHBLen(len: Int) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
   histBufLen = len
@@ -757,8 +757,8 @@ class WithEntanglingIPrefetcherIssueLatency(issueLatency: Int) extends WithTrans
   prefetchIssueLatency = issueLatency
 ))
 
-class WithEntanglingIPrefetcherDisableEntangling(disableEntangling: Boolean = true) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
-  disableEntangling = disableEntangling
+class WithEntanglingIPrefetcherMaxEntanglingBBFetch(maxEntanglingBBFetch: Option[Int]) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
+  maxEntanglingBBFetch = maxEntanglingBBFetch
 ))
 
 class WithL1ICacheNDemandMSHRs(nDemandMSHRs: Int) extends Config((site, here, up) => {

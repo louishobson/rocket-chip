@@ -1,0 +1,89 @@
+init_global
+init_patchlist
+init_elemlist
+init_interactionlist
+init_elemvertex
+init_edge
+init_stat_info
+init_sharedlock
+init_visibility_module
+radiosity
+process_tasks (model)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (avg)
+process_tasks (norm)
+Cycles: 81118718
+Time: 811194
+Instret: 34514538
+I$ response: 37305004
+I$ miss: 237344
+Demand refill: 184434
+Prefetch refill: 1836743
+Prefetch consumed: 19590527
+Late prefetch: 63550
+Early prefetch: 14553
+No prefetch: 145086
+Erroneous prefetch: 758288
+Demand miss cycles: 5951519
+Branch midpredict: 447776
+TIMING STATISTICS MEASURED BY MAIN PROCESS:
+	Overall start time	            11064720
+	Overall end time	            84485239
+	Total time with initialization	            73420519
+	Total time without initialization	            73388797
+Rasiosity Statistics
+
+    Histogram of interactions/elem
+	 Interactions  Occurrence
+	 -------------------------------
+	    13          2 (840000.000000)
+	    10          2 (910000.000000)
+	    9          1 (840000.000000)
+	    8          162 (20406.876953)
+	    6          4 (118500.000000)
+	    5          26 (3600.060059)
+	    4          35 (10718.750000)
+	    2          134 (30883.664062)
+	    1          135 (29207.166016)
+	    0          125 (44471.937500)
+    Configurations
+	Patch assignment: Static equal number
+	Always inserting at top of list for visibility testing (not sorted)
+	Recursive pruning enabled for BSP tree traversal
+	Patch cache:      Enabled
+	Always check all other queues when task stealing (not neighbor scheme)
+    Parameters
+	Number of processors:    1
+	Number of task queues:   1
+	Number of tasks / queue: 200
+	Area epsilon:            2000.000000
+	#inter parallel refine:  5
+	#visibility comp / task: 4
+	BF epsilon:              0.100000
+	Energy convergence:      0.000050
+    Iterations to converge:   9 times
+    Resource Usage
+	Number of patches:            14
+	Total number of elements:     626
+	Total number of interactions: 2048
+	          completely visible: 1522
+	        completely invisible: 106
+	           partially visible: 420
+	Interaction coherence (root interaction not counted)
+	       Common for 4 siblings: 1340
+	       Common for 3 siblings: 282
+	       Common for 2 siblings: 224
+	       Common for no sibling: 83
+	Avg. elements per patch:      44.7
+	Avg. interactions per patch:  146.3
+	Avg. interactions per element:3.3
+	Number of elements in equivalent uniform mesh: 1259
+	Elem(hierarchical)/Elem(uniform): 49.72%

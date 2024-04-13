@@ -64,18 +64,79 @@ CACHESIZE_CONFIGS := \
 
 MAX_ENTANGLINGS_CONFIGS := \
 	EntanglingIPrefetcherNoEntanglingConfig \
+	EntanglingIPrefetcherNoEntanglingSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings1UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings2UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings3UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings4UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings5UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings6UncompressedConfig \
+	EntanglingIPrefetcherMaxEntanglings1UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings2UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings3UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings4UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings5UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings6UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings1CompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings2CompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings3CompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings4CompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings5CompressedConfig \
-	EntanglingIPrefetcherMaxEntanglings6CompressedConfig
+	EntanglingIPrefetcherMaxEntanglings6CompressedConfig \
+	EntanglingIPrefetcherMaxEntanglings1CompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings2CompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings3CompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings4CompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings5CompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings6CompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadTwoSmallICacheConfig
 
 CONFIGS := \
 	EntanglingIPrefetcherNoPrefetcherBaselineConfig \
@@ -126,6 +187,15 @@ run-all-max-entanglings::
 
 run-all.%::
 	$(MAKE) run-radiosity.% run-barnes.% run-water-spatial.% run-ocean-cp.%
+
+run-radiosity-all::
+	$(MAKE) $(RADIOSITY_RUN_TARGETS)
+run-barnes-all::
+	$(MAKE) $(BARNES_RUN_TARGETS)
+run-water-spatial-all::
+	$(MAKE) $(WATER_SPATIAL_RUN_TARGETS)
+run-ocean-cp-all::
+	$(MAKE) $(OCEAN_CP_RUN_TARGETS)
 	
 run-radiosity.%::
 	mkdir -p "$(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)"
@@ -134,8 +204,8 @@ run-radiosity.%::
 		$(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(RADIOSITY_RUN_CONFIG)/verilator/elf.dest/emulator \
 			pk /home/ldh35/parsec_gc/ext/splash2x/apps/radiosity/inst/amd64-linux.gcc-serial/bin/radiosity \
 			-bf 1.0e-1 -batch -p 1 \
-			2>&1 >"$(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)/radiosity.output" \
-			| spike-dasm >"$(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)/radiosity.log"; \
+			>"$(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)/radiosity.output" \
+			2>"$(RESULTS_DIR)/$(RADIOSITY_RUN_CONFIG)/radiosity.log"; \
 	fi
 
 run-barnes.%::
@@ -144,8 +214,8 @@ run-barnes.%::
 	then \
 		$(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(BARNES_RUN_CONFIG)/verilator/elf.dest/emulator \
 			pk /home/ldh35/parsec_gc/ext/splash2x/apps/barnes/inst/amd64-linux.gcc-serial/bin/barnes \
-			2>&1 >"$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)/barnes.output" \
-			| spike-dasm >"$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)/barnes.log"; \
+			>"$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)/barnes.output" \
+			2>"$(RESULTS_DIR)/$(BARNES_RUN_CONFIG)/barnes.log"; \
 	fi
 
 run-water-spatial.%::
@@ -155,8 +225,8 @@ run-water-spatial.%::
 		$(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(WATER_SPATIAL_RUN_CONFIG)/verilator/elf.dest/emulator \
 			pk /home/ldh35/parsec_gc/ext/splash2x/apps/water_spatial/inst/amd64-linux.gcc-serial/bin/water_spatial \
 			"$(shell cat /home/ldh35/parsec_gc/ext/splash2x/apps/water_spatial/run/input_1)" \
-			2>&1 >"$(RESULTS_DIR)/$(WATER_SPATIAL_RUN_CONFIG)/water_spatial.output" \
-			| spike-dasm >"$(RESULTS_DIR)/$(WATER_SPATIAL_RUN_CONFIG)/water_spatial.log"; \
+			>"$(RESULTS_DIR)/$(WATER_SPATIAL_RUN_CONFIG)/water_spatial.output" \
+			2>"$(RESULTS_DIR)/$(WATER_SPATIAL_RUN_CONFIG)/water_spatial.log"; \
 	fi
 
 run-ocean-cp.%::
@@ -166,8 +236,8 @@ run-ocean-cp.%::
 		$(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(OCEAN_CP_RUN_CONFIG)/verilator/elf.dest/emulator \
 			pk /home/ldh35/parsec_gc/ext/splash2x/apps/ocean_cp/inst/amd64-linux.gcc-serial/bin/ocean_cp \
 			-n66 -p1 -e1e-6 -r20000.0 -t28800.0 \
-			2>&1 >"$(RESULTS_DIR)/$(OCEAN_CP_RUN_CONFIG)/ocean_cp.output" \
-			| spike-dasm >"$(RESULTS_DIR)/$(OCEAN_CP_RUN_CONFIG)/ocean_cp.log"; \
+			>"$(RESULTS_DIR)/$(OCEAN_CP_RUN_CONFIG)/ocean_cp.output" \
+			2>"$(RESULTS_DIR)/$(OCEAN_CP_RUN_CONFIG)/ocean_cp.log"; \
 	fi	
 
 

@@ -51,12 +51,10 @@ case class EntanglingIPrefetcherParams(
   prefetchIssueLatency: Int = 0,
   /* Settings for profiling */
   profilingHistBufLen: Int = 16,
-  /* An option to disable all entangling (but keep prefetching basic blocks). 
-   * This is for exploritory purposes, with the aim of determining the benefit of entangling. 
-   * When set, the entangling table is still set up assuming that there will be entanglings,
-   * but the history buffer is removed and the entangling table IO for entangling creation is tied off.
+  /* When triggering prefetches for dst-entangled BBs, limit the BB size to this value.
+   * When set to 0, the history buffer is removed and the entangling table IO for entangling creation is tied off.
    */
-  disableEntangling: Boolean = false,
+  maxEntanglingBBFetch: Option[Int] = None,
 )
 
 /** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams
@@ -84,7 +82,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def maxEntanglings = entanglingParams.maxEntanglings
   def prefetchIssueLatency = entanglingParams.prefetchIssueLatency
   def profilingHistBufLen = entanglingParams.profilingHistBufLen
-  def disableEntangling = entanglingParams.disableEntangling
+  def maxEntanglingBBFetch = entanglingParams.maxEntanglingBBFetch
 
   /* The block address size */
   def baddrBits = paddrBits - blockOffBits
@@ -799,7 +797,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
         io.prefetch_resp.valid := true.B
         io.prefetch_resp.bits.head := prefetch_baddrs(prefetch_len)
         io.prefetch_resp.bits.vidx := read_vidx
-        io.prefetch_resp.bits.size := read_size
+        io.prefetch_resp.bits.size := maxEntanglingBBFetch.map(_.U min read_size).getOrElse(read_size)
       }
 
       /* If there are no dst entangled addresses then move to the ready state */
@@ -987,7 +985,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
 
 
   /* We only need a history buffer if entangling is enabled */
-  if (!disableEntangling) {
+  if (maxEntanglingBBFetch.isEmpty || maxEntanglingBBFetch.get > 0) {
     /* Create the history buffer */
     val history_buffer = Module(new HistoryBuffer)
 
