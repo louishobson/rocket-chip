@@ -291,6 +291,9 @@ object emulator extends Cross[Emulator](
   // Prefetcher Configs
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherNoPrefetcherBaselineConfig"),
 
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTestConfig"),
+
+
 
 
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.EntanglingIPrefetcherTableSize002Sets2WaysConfig"),

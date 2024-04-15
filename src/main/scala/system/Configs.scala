@@ -67,7 +67,7 @@ class EntanglingIPrefetcherConfig(
 
 
 class EntanglingIPrefetcherNoPrefetcherBaselineConfig extends EntanglingIPrefetcherBaseConfig
-
+class EntanglingIPrefetcherTestConfig extends EntanglingIPrefetcherConfig
 
 
 class EntanglingIPrefetcherNoEntanglingConfig extends EntanglingIPrefetcherConfig(maxEntanglingBBFetch=Some(0))

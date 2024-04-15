@@ -57,7 +57,7 @@ case class EntanglingIPrefetcherParams(
   maxEntanglingBBFetch: Option[Int] = None,
 )
 
-/** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams
+/** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams.
   */ 
 trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   /* The parameters structure */
@@ -506,7 +506,7 @@ class EntanglingTableUpdateReq(implicit p: Parameters) extends CoreBundle with H
   val size = UInt(lgMaxBBSize.W)
 }
 
-/** [[EntanglingTableEntangleReq]] defines the interface for requesting an entangling is made
+/** [[EntanglingTableEntangleReq]] defines the interface for requesting an entangling is made.
   */ 
 class EntanglingTableEntangleReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val src = UInt(baddrBits.W)
@@ -542,7 +542,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
 
   /* Define the state register */
-  val s_ready :: s_prefetch_decode :: s_prefetch_output :: s_update_writeback :: s_entangle_encode :: s_entangle_writeback :: Nil = Enum(6)
+  val s_ready :: s_prefetch_decode :: s_prefetch_output :: s_prefetch_encode :: s_prefetch_writeback :: s_update_writeback :: s_entangle_encode :: s_entangle_writeback :: Nil = Enum(8)
   val state = RegInit(s_ready)
 
 
@@ -565,6 +565,10 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
   /* Registers for decoded entanglings */
   val prefetch_baddrs = Reg(Vec(maxEntanglings, UInt(baddrBits.W)))
   val prefetch_len = Reg(UInt(entanglingSizeBits.W))
+  
+  /* Register for counting valid entanglings (those which have BBs in the table) */
+  val prefetch_found_invalid_baddr = Reg(Bool())
+  val prefetch_valid_baddrs_len = Reg(UInt(entanglingSizeBits.W))
 
   /* Define registers for holding onto whether an entangling table hit or missed */
   val read_hits_save = Reg(Vec(eTableNWays, Bool()))
@@ -777,9 +781,16 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
         when(read_ents_len === 0.U) {
           state := s_ready
         } .otherwise {
+          /* Save the hits for in case we need to do a writeback */
+          read_hits_save := read_hits
+
           /* Save the decoder output */
           prefetch_baddrs := read_ents_baddrs
           prefetch_len := read_ents_len - 1.U
+
+          /* Set up invalid entangling detection */
+          prefetch_found_invalid_baddr := false.B
+          prefetch_valid_baddrs_len := 0.U
 
           /* Initiate the first read */
           readSize(read_ents_baddrs(read_ents_len-1.U))
@@ -792,22 +803,61 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
     /* When in the prefetch output state, keep outputting entanglings */
     is(s_prefetch_output) {
+      /* Record whether we missed */
+      prefetch_found_invalid_baddr := prefetch_found_invalid_baddr || ~read_hit
+
       /* Respond with the basic block on a cache hit */
       when(read_hit) {
+        /* Send a prefetch response */
         io.prefetch_resp.valid := true.B
         io.prefetch_resp.bits.head := prefetch_baddrs(prefetch_len)
         io.prefetch_resp.bits.vidx := read_vidx
         io.prefetch_resp.bits.size := maxEntanglingBBFetch.map(_.U min read_size).getOrElse(read_size)
+
+        /* Record the valid entangling and the end of prefetch_baddrs */
+        prefetch_valid_baddrs_len := prefetch_valid_baddrs_len + 1.U
+        prefetch_baddrs((maxEntanglings-1).U - prefetch_valid_baddrs_len) := prefetch_baddrs(prefetch_len)
       }
 
-      /* If there are no dst entangled addresses then move to the ready state */
+      /* Check if there are any dst-entangled addresses left */
       when(prefetch_len === 0.U) {
-        state := s_ready
+        /* There are no more dst-entangled baddrs, so either move to the ready state or
+         * perform a writeback if some of them were invalid.
+         */
+        when(prefetch_found_invalid_baddr) {
+          state := s_prefetch_encode
+        } .otherwise {
+          state := s_ready
+        }
       } .otherwise {
-        /* Decrement the length and trigger the next read */
+        /* There are some dst-entangled addresses left, so decrement the length and trigger the next read */
         prefetch_len := prefetch_len - 1.U
         readSize(prefetch_baddrs(prefetch_len-1.U))
       }
+    }
+
+    /* When in the prefetch encode state, encode the baddrs which were found to be valid */
+    is(s_prefetch_encode) {
+      /* Encode the entanglings which we stored at the end of prefetch_baddrs */
+      encoder.io.req.valid := true.B
+      encoder.io.req.bits.head := prefetch_r.baddr
+      encoder.io.req.bits.baddrs.take(maxEntanglings) := prefetch_baddrs.reverse
+      encoder.io.req.bits.len := prefetch_valid_baddrs_len
+
+      /* Move to the writeback state */
+      state := s_prefetch_writeback
+    }
+
+    /* When in the prefetch writeback state, we should immediately have encoded entanglings */
+    is(s_prefetch_writeback) {
+      /* The encoder should not have had to drop any baddrs since none have been added */
+      assert(encoder.io.resp.valid)
+
+      /* Perform the writeback */
+      writeAtWay(prefetch_r.baddr, read_hits_save, None, Some(encoder.io.resp.bits.ents))
+
+      /* Change to the ready state */
+      state := s_ready
     }
 
   }
@@ -918,13 +968,13 @@ class EntanglingIPrefetcherFetchReq(implicit p: Parameters) extends CoreBundle w
 }
 
 /** [[EntanglingIPrefetcherMissReq]] defines the interface for notifying the prefetcher of a cache miss.
- */
+  */
 class EntanglingIPrefetcherMissReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val paddr = UInt(paddrBits.W)
 }
 
 /** [[EntanglingIPrefetcherPrefetchResp]] defines the interface for responding with prefetches.
- */
+  */
 class EntanglingIPrefetcherPrefetchResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val paddr = UInt(paddrBits.W)
   val index = UInt(idxBits.W)
@@ -995,11 +1045,11 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
     history_buffer.io.insert_req.bits.time := bb_counter.io.resp.time
 
     /* Link up the search IO. We don't need to search if
-    *  - the miss is invalid, or
-    *  - the miss address isn't for this BB's head.
-    * Assert that the history buffer is ready for a search. If it isn't then something strange has happened:
-    * a search request only comes in on a refill finishing, and a refill takes at least eight cycles.
-    */
+     *  - the miss is invalid, or
+     *  - the miss address isn't for this BB's head.
+     * Assert that the history buffer is ready for a search. If it isn't then something strange has happened:
+     * a search request only comes in on a refill finishing, and a refill takes at least eight cycles.
+     */
     val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
     assert(!history_buffer.io.search_req.valid || history_buffer.io.search_req.ready)
     history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head

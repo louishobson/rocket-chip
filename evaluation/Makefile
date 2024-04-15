@@ -140,6 +140,7 @@ MAX_ENTANGLINGS_CONFIGS := \
 
 CONFIGS := \
 	EntanglingIPrefetcherNoPrefetcherBaselineConfig \
+	EntanglingIPrefetcherTestConfig \
 	$(TABLESIZE_CONFIGS) \
 	$(CACHESIZE_CONFIGS) \
 	$(MAX_ENTANGLINGS_CONFIGS)
