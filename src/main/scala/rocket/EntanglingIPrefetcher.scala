@@ -196,7 +196,7 @@ class EntanglingEncoder(keepFirstBaddr: Boolean = true)(implicit p: Parameters) 
      */
     val baddrs_okay = req.len =/= (maxEntanglings+1).U && req.baddrs.zipWithIndex.map{
       case (baddr, i) => (baddr & lostBitsMask) === (req.head & lostBitsMask) || i.U >= req.len
-    }.reduce(_&&_)
+    }.asUInt.andR
 
     /* We can produce an output entangling sequence when baddrs_okay is flagged.
      * Note that io.resp.bits.ents is initialized to 0, which is the correct output for the case where req.len is 0.
@@ -572,7 +572,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
   /* Define registers for holding onto whether an entangling table hit or missed */
   val read_hits_save = Reg(Vec(eTableNWays, Bool()))
-  val read_hit_save = read_hits_save.reduce(_||_)
+  val read_hit_save = read_hits_save.asUInt.orR
 
 
 
@@ -628,7 +628,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
   /* Check the tags and validity bits, asserting that we have a maximum of one hit */
   val read_hits = VecInit(read_raw_size_vidx_tag_valid.map(b => b._4(0) && b._3 === read_baddr_prev >> entIdxBits))
-  val read_hit = read_hits.reduce(_||_)
+  val read_hit = read_hits.asUInt.orR
   assert(!read_enable || PopCount(read_hits) <= 1.U)
 
   /* Get the read size */
@@ -732,7 +732,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
       /* Check whether dst baddr is already entangled */
       val already_entangled = read_ents_baddrs.zipWithIndex.map{
         case (b, i) => b === entangle_r.dst && i.U < read_ents_len
-      }.reduce(_||_)
+      }.asUInt.orR
 
       /* If the read was a miss or the dst is already entangled, then we don't want to entangle */
       when(!read_hit || already_entangled) {

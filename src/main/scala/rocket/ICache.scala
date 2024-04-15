@@ -880,7 +880,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
       val prefetch_enc_tag = tECC.decode(prefetch_tag_read(i))
       val (prefetch_tag_error_i, prefetch_tag_read_i) = Split(prefetch_enc_tag.uncorrected, tagBits)
       !prefetch_tag_error_i && prefetch_vb_read && prefetch_tag_read_i === prefetch_s1_reg.paddr >> pgUntagBits
-    }).reduce(_||_)
+    }).asUInt.orR
 
     /* Set the MSHR IO, defaulting the validity bit to false for now */
     mshr.io.prefetch_req.valid := false.B
