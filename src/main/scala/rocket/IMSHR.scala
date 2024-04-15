@@ -116,19 +116,18 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   val hint_outstanding = RegInit(false.B)
 
   /* Default the channel */
-  io.a_channel.valid := sending_hint || can_accept_demand_req || can_accept_prefetch_req
+  io.a_channel.valid := false.B
   io.a_channel.bits := DontCare
 
   /* Set the bits of the A channel */
-  when(io.a_channel.valid && !sending_hint) {
-
+  when(can_accept_demand_req || can_accept_prefetch_req) {
     /* Iterate over the possibility of inserting into each register */
     for(i <- 0 until nMSHRs) {
       val mask = (0 until nMSHRs).map(_ < i).map(_.B).asUInt
       val free = status.dropRight(nPrefetchMSHRs).map(!_.valid && can_accept_demand_req).appendedAll(status.drop(nDemandMSHRs).map(!_.valid)).asUInt
       when(free(i) && (mask & free) === 0.U) {
-
         /* Make the request to higher-level memory */
+        io.a_channel.valid := true.B
         io.a_channel.bits := createGetRequest(req.paddr, req.cache, i)
 
         /* Save the request if the A channel was actually ready */
@@ -150,14 +149,15 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     
     /* Send a prefetch request on the next cycle */
     when(a_fired && !hint_outstanding && prev_req.soft_prefetch && !can_accept_demand_req) {
-      /** crosses_page indicates if there is a crosses page access
-        * next_block is the address to be prefetched.
-        */
+      /* crosses_page indicates if there is a crosses page access
+       * next_block is the address to be prefetched.
+       */
       val (crosses_page, next_block) = Split(prev_req.paddr(pgIdxBits-1, blockOffBits) +& 1.U, pgIdxBits-blockOffBits)
 
       /* Send the hint */
       sending_hint := !crosses_page
       hint_outstanding := sending_hint
+      io.a_channel.valid := true.B
       io.a_channel.bits := createHintRequest(req.paddr, next_block)
     }
 
@@ -175,7 +175,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     ccover(!sending_hint && (io.a_channel.valid && !io.a_channel.ready), "MISS_A_STALL", "I$ miss blocked by A-channel")
   }
 
-  /* Collect D-channel response info I$ */
+  /* Collect D-channel response info for I$ */
   val response_valid = io.d_channel.valid && edge.hasData(io.d_channel.bits)
   val response_fire = response_valid && io.resp.ready
   val (_, _, response_done, response_count) = edge.count(io.d_channel)
@@ -223,7 +223,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   def nPrefetchMSHRs = entanglingParams.map(_.nPrefetchMSHRs).getOrElse(0)
   def nMSHRs = nDemandMSHRs + nPrefetchMSHRs
 
-  /* Make a Access request to the L2 memory */
+  /* Make an access request to the L2 memory */
   def createGetRequest(paddr: UInt, cache: Bool, source: Int): TLBundleA = {
     val bits = Wire(new TLBundleA(edge.bundle)) 
     bits := edge.Get(
