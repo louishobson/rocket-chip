@@ -2,19 +2,26 @@ package freechips.rocketchip.rocket
 
 import chisel3._
 import chisel3.experimental.BundleLiterals._
+import chisel3.experimental.SourceInfo
 import chisel3.util.{Decoupled, Queue, RegEnable, log2Up}
 import freechips.rocketchip.amba.AMBAProt
 import freechips.rocketchip.tile.{CoreBundle, CoreModule}
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.util.{SeqToAugmentedSeq, ExposedShiftQueue, Split}
+import freechips.rocketchip.util.{SeqToAugmentedSeq, ExposedShiftQueue, Split, property}
 import org.chipsalliance.cde.config.Parameters
 
+/** [[IMSHRReq]] defines a request from the ICache to higher-level memory. 
+  */
 class IMSHRReq(implicit p: Parameters) extends CoreBundle with HasL1ICacheParameters {
   val index = UInt(idxBits.W)
   val paddr = UInt(paddrBits.W)
   val cache = Bool()
+  val soft_prefetch = Bool()
 }
 
+/** [[IMSHRResp]] defines a data response from the IMSHR.
+  * A new beat is indicated by a valid response and beat being asserted.
+  */
 class IMSHRResp(ep: TLEdgeParameters)(implicit p: Parameters) extends CoreBundle with HasL1ICacheParameters {
   val index = UInt(idxBits.W)
   val paddr = UInt(paddrBits.W)
@@ -27,6 +34,13 @@ class IMSHRResp(ep: TLEdgeParameters)(implicit p: Parameters) extends CoreBundle
   val data = UInt(ep.bundle.dataBits.W)
 }
 
+/** [[IMSHR]] defines a Miss Status Holding Register for the I$. 
+  * 
+  * It has separate queues for demand and prefetch requests, where demand requests are handled with a higher priority.
+  * There are some number of registers reserved for demand misses (nDemandMSHRs), with some additional
+  * registers available for prefetch requests (nPrefetchMSHRs).
+  * When there is no prefetcher, next-line hints can be sent to the higher-level memory instead.
+  */ 
 class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with HasL1ICacheParameters {
 
   /* Define the IO */
@@ -36,9 +50,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val a_channel = Decoupled(new TLBundleA(edge.bundle))
     val d_channel = Flipped(Decoupled(new TLBundleD(edge.bundle)))
     val resp = Decoupled(new IMSHRResp(edge))
-    val sending_hint = Output(Bool())
-    val hint_outstanding = Output(Bool())
-    val soft_prefetch = Input(Bool())
+    val is_busy = Output(Bool())
   })
 
   /* Define the status registers */
@@ -89,22 +101,26 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   /* We will accept the next prefetch request when
    *  - The prefetcher is enabled,
    *  - there is a valid request (prefetch_q.valid is asserted),
-   *  - we have space,
+   *  - we have space in the prefetch MSHRs,
    *  - the A TL port is ready, and
    *  - a demand request isn't currently being accepted.
    */
- prefetch_q.ready := can_accept_prefetch_req && !can_accept_demand_req && io.a_channel.ready
+  prefetch_q.ready := can_accept_prefetch_req && !can_accept_demand_req && io.a_channel.ready
 
   /* Get the next request */
   val req = Mux(can_accept_demand_req, demand_q.bits, prefetch_q.bits)
   assert(req.paddr(blockOffBits-1,0) === 0.U)
 
+  /* Remember whether we have an outstanding hint */
+  val sending_hint = WireDefault(false.B)
+  val hint_outstanding = RegInit(false.B)
+
   /* Default the channel */
-  io.a_channel.valid := io.sending_hint || can_accept_demand_req || can_accept_prefetch_req
+  io.a_channel.valid := sending_hint || can_accept_demand_req || can_accept_prefetch_req
   io.a_channel.bits := DontCare
 
   /* Set the bits of the A channel */
-  when(io.a_channel.valid && !io.sending_hint) {
+  when(io.a_channel.valid && !sending_hint) {
 
     /* Iterate over the possibility of inserting into each register */
     for(i <- 0 until nMSHRs) {
@@ -115,7 +131,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
         /* Make the request to higher-level memory */
         io.a_channel.bits := createGetRequest(req.paddr, req.cache, i)
 
-        /* Save the request */
+        /* Save the request if the A channel was actually ready */
         when(io.a_channel.ready) {
           status(i).index := req.index
           status(i).paddr := req.paddr
@@ -126,27 +142,22 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     }
   }
 
-  /* Remember whether we have an outstanding hint */
-  val hint_outstanding = RegInit(false.B)
-  io.hint_outstanding := hint_outstanding
-  io.sending_hint := false.B
-
   /* Send hints when the prefetcher is not enabled */
   if (cacheParams.prefetch && !hasPrefetcher) {
     /* Save the previous request and whether it was actually sent */
     val prev_req = RegNext(req)
     val a_fired = RegNext(io.a_channel.fire)
-
+    
     /* Send a prefetch request on the next cycle */
-    when(a_fired && io.soft_prefetch && !hint_outstanding && !can_accept_demand_req) {
-      /** [[crosses_page]]  indicate if there is a crosses page access
-        * [[next_block]] : the address to be prefetched.
+    when(a_fired && !hint_outstanding && prev_req.soft_prefetch && !can_accept_demand_req) {
+      /** crosses_page indicates if there is a crosses page access
+        * next_block is the address to be prefetched.
         */
       val (crosses_page, next_block) = Split(prev_req.paddr(pgIdxBits-1, blockOffBits) +& 1.U, pgIdxBits-blockOffBits)
 
       /* Send the hint */
-      io.sending_hint := crosses_page === next_block
-      hint_outstanding := io.sending_hint
+      sending_hint := !crosses_page
+      hint_outstanding := sending_hint
       io.a_channel.bits := createHintRequest(req.paddr, next_block)
     }
 
@@ -154,6 +165,14 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     when(io.d_channel.valid && !edge.hasData(io.d_channel.bits)) {
       hint_outstanding := false.B
     }
+
+    /* Cover properties previously in the ICache module */
+    val ongoing_demand_miss = status.map(s => s.valid && s.demand).asUInt.orR
+    ccover(sending_hint && !io.a_channel.ready, "PREFETCH_A_STALL", "I$ prefetch blocked by A-channel")
+    ccover(ongoing_demand_miss && (io.d_channel.fire && !edge.hasData(io.d_channel.bits)), "PREFETCH_D_BEFORE_MISS_D", "I$ prefetch resolves before miss")
+    ccover(!ongoing_demand_miss && (io.d_channel.fire && !edge.hasData(io.d_channel.bits)), "PREFETCH_D_AFTER_MISS_D", "I$ prefetch resolves after miss")
+    ccover(io.a_channel.fire && hint_outstanding, "PREFETCH_D_AFTER_MISS_A", "I$ prefetch resolves after second miss")
+    ccover(!sending_hint && (io.a_channel.valid && !io.a_channel.ready), "MISS_A_STALL", "I$ miss blocked by A-channel")
   }
 
   /* Collect D-channel response info I$ */
@@ -194,6 +213,9 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   io.resp.bits := Mux(response_valid, response, response_reg)
   io.resp.bits.beat := response_valid
 
+  /* Tell the I$ when the MSHR has outstanding transactions */
+  io.is_busy := sending_hint || hint_outstanding || status.map(_.valid).asUInt.orR || demand_q.valid || prefetch_q.valid
+
   /* Get information about the prefetcher */
   def entanglingParams = cacheParams.entanglingParams
   def hasPrefetcher = entanglingParams.isDefined
@@ -231,5 +253,9 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     lgSize = lgCacheBlockBytes.U,
     param = TLHints.PREFETCH_READ
   )._2
+
+  /* Cover properties from I$ */
+  def ccover(cond: Bool, label: String, desc: String)(implicit sourceInfo: SourceInfo) =
+    property.cover(cond, s"ICACHE_$label", "MemorySystem;;" + desc)
 
 }

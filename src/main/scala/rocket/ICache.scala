@@ -378,9 +378,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   /* Create the MSHR */
   val mshr = Module(new IMSHR(edge_out))
 
-  /* Link up the prefetch hinting wire */
-  mshr.io.soft_prefetch := io.s2_prefetch
-
   /* Connect the TL channels to the MSHR */
   mshr.io.a_channel <> tl_out.a
   mshr.io.d_channel <> tl_out.d
@@ -794,13 +791,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   mshr.io.demand_req.bits.index := s2_vaddr(idxBits+blockOffBits-1,blockOffBits)
   mshr.io.demand_req.bits.paddr := (s2_paddr >> blockOffBits) << blockOffBits
   mshr.io.demand_req.bits.cache := io.s2_cacheable
-
-  if(cacheParams.prefetch) {
-    ccover(mshr.io.sending_hint && !tl_out.a.ready, "PREFETCH_A_STALL", "I$ prefetch blocked by A-channel")
-    ccover(ongoing_demand_miss && (tl_out.d.fire && !refill_one_beat), "PREFETCH_D_BEFORE_MISS_D", "I$ prefetch resolves before miss")
-    ccover(!ongoing_demand_miss && (tl_out.d.fire && !refill_one_beat), "PREFETCH_D_AFTER_MISS_D", "I$ prefetch resolves after miss")
-    ccover(tl_out.a.fire && mshr.io.hint_outstanding, "PREFETCH_D_AFTER_MISS_A", "I$ prefetch resolves after second miss")
-  }
+  mshr.io.demand_req.bits.soft_prefetch := io.s2_prefetch
 
   tl_out.b.ready := true.B
   tl_out.c.valid := false.B
@@ -820,7 +811,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   // don't gate I$ clock since there are outstanding transcations.
   io.keep_clock_enabled :=
     tl_in.map(tl => tl.a.valid || tl.d.valid || s1_slaveValid || s2_slaveValid || s3_slaveValid).getOrElse(false.B) || // ITIM
-    s1_valid || s2_valid || ongoing_demand_miss || mshr.io.sending_hint || mshr.io.hint_outstanding // I$
+    s1_valid || s2_valid || ongoing_demand_miss || mshr.io.is_busy // I$
 
   /* Create the entangling prefetcher if the parameters were given */
   if(cacheParams.entanglingParams.isDefined) {
@@ -887,6 +878,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     mshr.io.prefetch_req.bits.paddr := prefetch_s1_reg.paddr
     mshr.io.prefetch_req.bits.index := prefetch_s1_reg.index
     mshr.io.prefetch_req.bits.cache := false.B
+    mshr.io.prefetch_req.bits.soft_prefetch := false.B
 
     /* When we have a prefetch in stage 1... */
     when(prefetch_s1_valid) {
@@ -899,7 +891,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
        */
       .otherwise {
         mshr.io.prefetch_req.valid := true.B
-        prefetch_handled := mshr.io.prefetch_req.fire
+        prefetch_handled := mshr.io.prefetch_req.ready
       } 
     }
 
@@ -1088,7 +1080,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     msbs ## lsbs
   }
 
-  ccover(!mshr.io.sending_hint && (tl_out.a.valid && !tl_out.a.ready), "MISS_A_STALL", "I$ miss blocked by A-channel")
   ccover(invalidate && ongoing_demand_miss, "FLUSH_DURING_MISS", "I$ flushed during miss")
 
   def ccover(cond: Bool, label: String, desc: String)(implicit sourceInfo: SourceInfo) =

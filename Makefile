@@ -14,7 +14,7 @@ RUN ?= scratch/hello_world
 RISCV_CC := $(RISCV)/bin/riscv64-unknown-elf-gcc
 RISCV_CARGS := -O0
 
-
+.DEFAULT_GOAL := vsim
 
 bloop:
 	$(MILL) --import ivy:com.lihaoyi::mill-contrib-bloop:  mill.contrib.bloop.Bloop/install
@@ -57,7 +57,7 @@ run_no_comp: $(RUN).riscv
 	$(base_dir)/out/emulator/$(PROJECT).TestHarness/$(CONFIG_FULL)/verilator/elf.dest/emulator \
 	+verbose \
 	pk $(RUN).riscv \
-	2>&1 | spike-dasm > $(RUN).log
+	2>&1 >$(RUN).output | spike-dasm > $(RUN).log
 
 run: vsim run_no_comp
 

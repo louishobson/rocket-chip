@@ -804,7 +804,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     /* When in the prefetch output state, keep outputting entanglings */
     is(s_prefetch_output) {
       /* Record whether we missed */
-      prefetch_found_invalid_baddr := prefetch_found_invalid_baddr || ~read_hit
+      prefetch_found_invalid_baddr := prefetch_found_invalid_baddr || !read_hit
 
       /* Respond with the basic block on a cache hit */
       when(read_hit) {
