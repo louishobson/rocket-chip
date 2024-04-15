@@ -909,10 +909,10 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     if(cacheParams.enableProfiling) {
 
       /* Create history buffer for cache misses */
-      val miss_history = Module(new GenericHistoryBuffer(UInt(paddrBits.W), cacheParams.entanglingParams.get.profilingHistBufLen))
+      val miss_history = Module(new QueryableHistoryBuffer(UInt(paddrBits.W), cacheParams.entanglingParams.get.profilingHistBufLen))
 
       /* Create history buffer for evicted prefetches */
-      val evicted_prefetch_history = Module(new GenericHistoryBuffer(UInt(paddrBits.W), cacheParams.entanglingParams.get.profilingHistBufLen))
+      val evicted_prefetch_history = Module(new QueryableHistoryBuffer(UInt(paddrBits.W), cacheParams.entanglingParams.get.profilingHistBufLen))
 
       /* Create two arrays of bits to know when the cache line was inserted by a demand request and whether it has been accessed */
       val demand_array = RegInit(0.U((nSets*nWays).W))

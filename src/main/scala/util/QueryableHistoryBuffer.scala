@@ -6,12 +6,12 @@ import chisel3.util._
 
 
 
-/** [[GenericHistoryBuffer]] contains a generic implementation of a history buffer that can be queried.
+/** [[QueryableHistoryBuffer]] contains an implementation of a history buffer that can be queried.
  * 
  * Entries contain a valid bit which is invalidated on querying.
  * Any evicted, valid entry is also reported via the IO.
  */
-class GenericHistoryBuffer[T <: Data](typ: T, length: Int) extends Module {
+class QueryableHistoryBuffer[T <: Data](typ: T, length: Int) extends Module {
 
     /* Define the IO */
     val io = IO(new Bundle {
