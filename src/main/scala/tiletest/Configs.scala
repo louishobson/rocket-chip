@@ -127,18 +127,17 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
         )),
 
         /* TEST 3: Ensure that we can search while simultaneously inserting.
-         * Insert {head: i, time: i} for i in [0, histBufLen*2).
+         * Insert {head: i, time: i} for i in [0, histBufLen+4).
          * After histBufLen cycles the whole buffer is full.
-         * At this point, send histBufLen a request for {dst: histBufLen*2, time: histBufLen-1}.
-         * This should succeed, even though insertions are still ongoing, unless histBufLen==1 or
-         * histBufSearchFragLen==1, in which case all valid entries are shifted out of the buffer
-         * before the search finds them.
+         * At this point, send histBufLen a request for {dst: histBufLen+4, time: histBufLen-1}.
+         * This should succeed, even though insertions are still ongoing, unless histBufLen <= 4,
+         * in which case all valid entries are shifted out of the buffer before the search finds them.
          */
         Module(new HistoryBufferTest(2,
-          Seq.tabulate(histBufLen*2)(i => insertReq(i, i)),
+          Seq.tabulate(histBufLen+4)(i => insertReq(i, i)),
           histBufLen,
-          searchReq(histBufLen*2, histBufLen-1),
-          if (histBufLen>1 && histBufSearchFragLen>1) searchResp(histBufLen-1, histBufLen*2) else None
+          searchReq(histBufLen+4, histBufLen-1),
+          if (histBufLen>4) searchResp(histBufLen-1, histBufLen+4) else None
         )),
 
         /* TEST 4: When the destination address is found in the history buffer before a valid source address,

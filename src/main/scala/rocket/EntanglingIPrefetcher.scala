@@ -26,8 +26,6 @@ case class EntanglingIPrefetcherParams(
   maxBBGapSize: Int = 2, 
   /* The length of the history buffer */
   histBufLen: Int = 16,
-  /* The number of elements of the history buffer to search in one combinatorial path */
-  histBufSearchFragLen: Int = 4,
   /* The ways and sets of the entangling table */
   nWays: Int = 4,
   nSets: Int = 1024,
@@ -70,7 +68,6 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def histBufLen = entanglingParams.histBufLen
   def sigBBSize = entanglingParams.sigBBSize
   def maxBBGapSize = entanglingParams.maxBBGapSize
-  def histBufSearchFragLen = entanglingParams.histBufSearchFragLen
   def eTableNWays = entanglingParams.nWays
   def eTableNSets = entanglingParams.nSets
   def eTablePrefetchQueueSize = entanglingParams.eTablePrefetchQueueSize
@@ -104,9 +101,6 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
 
   /* The number of bits required to store a BB size */
   def lgMaxBBSize = log2Up(maxBBSize + 1).toInt
-
-  /* The maximum history buffer search latency */
-  def maxHistBufSearchLatency = math.ceil(histBufLen/histBufSearchFragLen).toInt + 1
 
   /* The maximum possible baddr and time */
   def maxTime = (math.pow(2, timeBits)-1).toInt
@@ -396,13 +390,13 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   }
   val hist_buf = RegInit(VecInit(Seq.fill(histBufLen)((new HBBundle).Lit(_.time -> maxTime.U))))
 
-  /* Insert a new significant block into the history buffer */
+  /* Insert a new significant block into the end of the history buffer */
   when(io.insert_req.valid) {
-    hist_buf(0).head := io.insert_req.bits.head
-    hist_buf(0).time := io.insert_req.bits.time
-    for (i <- 1 to histBufLen-1) {
-      hist_buf(i).head := hist_buf(i-1).head
-      hist_buf(i).time := hist_buf(i-1).time
+    hist_buf(histBufLen-1).head := io.insert_req.bits.head
+    hist_buf(histBufLen-1).time := io.insert_req.bits.time
+    for (i <- 0 until histBufLen-1) {
+      hist_buf(i).head := hist_buf(i+1).head
+      hist_buf(i).time := hist_buf(i+1).time
     }
   }
   
@@ -419,9 +413,9 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
    * and an iterator to indicate the current iteration
    */
   val search_status = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
-  val search_iter = Reg(UInt(log2Up(histBufLen/histBufSearchFragLen+1).W))
+  val search_iter = Reg(UInt(log2Up(histBufLen+1).W))
   when(io.search_req.fire) {
-    search_iter := (histBufLen/histBufSearchFragLen).U
+    search_iter := histBufLen.U
     search_status.src := DontCare
     search_status.dst := io.search_req.bits.dst
     search_status.target_time := io.search_req.bits.target_time
@@ -439,36 +433,18 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
 
     /* Otherwise we must not have found a result, so keep searching */
     .otherwise {
-      
       /* Decrement the iterator */
       val search_iter1 = search_iter - 1.U
       search_iter := search_iter1
 
-      /* Group the history buffer into groups of histBufSearchFragLen length, 
-       * choose the search_iter'th group, and fold over that group.
-       */ 
-      search_status := VecInit(hist_buf
-        .grouped(histBufSearchFragLen)
-        .map(VecInit(_))
-        .toSeq
-        .reverse
-      )(search_iter1).foldLeft(search_status)((prev_search_status, hb_entry) => {
-        /* Define a wire which is the result of examining this history buffer entry */
-        val next_search_status = WireDefault(prev_search_status)
-        /* Only update this wire if the search is still valid and a source address has not been found */
-        when(prev_search_status.valid && !prev_search_status.found) {
-          /* If we see the destination address before finding a source address, then invalidate the search.
-           * Else if we find a candidate source address, then save it.
-           */
-          when(hb_entry.head === search_status.dst) {
-            next_search_status.valid := false.B
-          } .elsewhen(hb_entry.time <= search_status.target_time) { 
-            next_search_status.src := hb_entry.head
-            next_search_status.found := true.B
-          }
-        }
-        next_search_status
-      })
+      /* Invalidate the search if we see the destination destination basic block.
+       * Otherwise if we see a time before the target time, we can stop the search.
+       */
+      search_status.valid := hist_buf(search_iter1).head =/= search_status.dst
+      when(hist_buf(search_iter1).time <= search_status.target_time) {
+        search_status.src := hist_buf(search_iter1).head 
+        search_status.found := true.B
+      }
     }
   }
 
@@ -1256,7 +1232,7 @@ class HistoryBufferTest(
     val started = RegEnable(io.start, false.B, io.start)
 
     /* Create registers to iterate over the inputs/outputs */
-    def maxIterations = in.length.max(delay+maxHistBufSearchLatency+1)
+    def maxIterations = in.length.max(delay+histBufLen+2)
     val i = RegInit(0.U(log2Up(maxIterations+1).W))
 
     /* Iterate i */
