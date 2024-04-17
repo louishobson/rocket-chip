@@ -38,8 +38,8 @@ class WithEntanglingTests extends Config((site, here, up) => {
 class WithBBCounterTests extends Config((site, here, up) => {
   case UnitTests => (q: Parameters) => {
     class Tests(implicit val p: Parameters) extends HasEntanglingIPrefetcherParameters {
-      def req(baddr: Int, timevidx: Int, valid: Boolean = true) = ((new BBCounterReq).Lit(_.baddr -> baddr.U, _.time -> timevidx.U, _.vidx -> timevidx.U), valid.B)
-      def resp(head: Int, timevidx: Int, size: Int, done: Boolean) = (new BBCounterResp).Lit(_.head -> head.U, _.time -> timevidx.U, _.vidx -> timevidx.U, _.size -> size.U, _.done -> done.B)
+      def req(baddr: Int, timepidx: Int, valid: Boolean = true) = ((new BBCounterReq).Lit(_.baddr -> baddr.U, _.time -> timepidx.U, _.pidx -> timepidx.U), valid.B)
+      def resp(head: Int, timepidx: Int, size: Int, done: Boolean) = (new BBCounterResp).Lit(_.head -> head.U, _.time -> timepidx.U, _.pidx -> timepidx.U, _.size -> size.U, _.done -> done.B)
       def produce = Seq(
         /* TEST 1: a sequence of consecutive addresses just increases the size of the BB */
         Module(new BBCounterTest(0, 
@@ -163,10 +163,10 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
 class WithEntanglingTableTests extends Config((site, here, up) => {
   case UnitTests => (q: Parameters) => {
     class Tests(implicit val p: Parameters) extends HasEntanglingIPrefetcherParameters {
-      def updateReq(head: Int, size: Int, vidx: Int) = (new EntanglingTableUpdateReq).Lit(_.head -> head.U, _.size -> size.U)
+      def updateReq(head: Int, size: Int, pidx: Int) = (new EntanglingTableUpdateReq).Lit(_.head -> head.U, _.size -> size.U)
       def entangleReq(src: Int, dst: Int) = (new EntanglingTableEntangleReq).Lit(_.src -> src.U, _.dst -> dst.U)
       def prefetchReq(baddr: Int) = (new EntanglingTablePrefetchReq).Lit(_.baddr -> baddr.U)
-      def prefetchResp(head: Int, size: Int, vidx: Int) = (new EntanglingTablePrefetchResp).Lit(_.head -> head.U, _.size -> size.U, _.vidx -> vidx.U)
+      def prefetchResp(head: Int, size: Int, pidx: Int) = (new EntanglingTablePrefetchResp).Lit(_.head -> head.U, _.size -> size.U, _.pidx -> pidx.U)
       def produce = Seq(
         /* TEST 1: Just insert a single BB and request it as a prefetch. Expect the head to be incremented and the size to be decremented. */
         Module(new EntanglingTableTest(0,
@@ -233,14 +233,14 @@ class WithEntanglingTableTests extends Config((site, here, up) => {
           Seq()
         )),
 
-        /* TEST 11: An update request replaces an old entry if the vidx is different,
-         * but only if there are enough bits for a vidx to be required.
+        /* TEST 11: An update request replaces an old entry if the pidx is different,
+         * but only if there are enough bits for a pidx to be required.
          */
         Module(new EntanglingTableTest(10,
           Seq(updateReq(1, 16, 0), updateReq(1, 12, 1)),
           Seq(),
           Seq(prefetchReq(1)), 
-          Seq(if (vidxBits == 0) prefetchResp(2, 15, 3) else prefetchResp(2, 11, 1)) // The 3 is just proving the point that the vidx is not used
+          Seq(if (pidxBits == 0) prefetchResp(2, 15, 3) else prefetchResp(2, 11, 1)) // The 3 is just proving the point that the pidx is not used
         )),
       )
     }
