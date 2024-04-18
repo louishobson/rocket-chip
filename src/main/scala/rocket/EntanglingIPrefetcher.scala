@@ -472,13 +472,13 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   io.search_resp.bits.src := search_src
   io.search_resp.bits.dst := search_dst
 
-  /* Read from the history buffer */
+  /* Trigger a read from the history buffer */
   def readHB(idx: UInt) = {
     hb_idx := idx
     hb_en := true.B
   }
 
-  /* Write into the history buffer */
+  /* Trigger a write into the history buffer */
   def writeHB(idx: UInt, data: Bits) = {
     hb_idx := idx
     hb_write_data := data
