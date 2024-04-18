@@ -109,7 +109,6 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
          */
         Module(new HistoryBufferTest(0,
           Seq.tabulate(histBufLen-2)(i => insertReq(i, i*10)),
-          histBufLen-2,
           searchReq(histBufLen, 15),
           searchResp(1, histBufLen)
         )),
@@ -121,35 +120,19 @@ class WithHistoryBufferTests extends Config((site, here, up) => {
          */
         Module(new HistoryBufferTest(1,
           Seq.tabulate(histBufLen)(i => insertReq(i, (i+2)*10)),
-          histBufLen,
           searchReq(histBufLen, 15),
           None
         )),
 
-        /* TEST 3: Ensure that we can search while simultaneously inserting.
-         * Insert {head: i, time: i} for i in [0, histBufLen+4).
-         * After histBufLen cycles the whole buffer is full.
-         * At this point, send histBufLen a request for {dst: histBufLen+4, time: histBufLen-1}.
-         * This should succeed, even though insertions are still ongoing, unless histBufLen <= 4,
-         * in which case all valid entries are shifted out of the buffer before the search finds them.
-         */
-        Module(new HistoryBufferTest(2,
-          Seq.tabulate(histBufLen+4)(i => insertReq(i, i)),
-          histBufLen,
-          searchReq(histBufLen+4, histBufLen-1),
-          if (histBufLen>4) searchResp(histBufLen-1, histBufLen+4) else None
-        )),
-
-        /* TEST 4: When the destination address is found in the history buffer before a valid source address,
+        /* TEST 3: When the destination address is found in the history buffer before a valid source address,
          * then the search should not produce a result.
          * Insert {head: i, time: i} for i in [0, histBufLen).
          * After this, search for {dst: histBufLen-1, time: 0}.
          * There should be no response, as the destination address will be seen before or at the same
          * time as the entry with timestamp 0.
          */
-        Module(new HistoryBufferTest(3,
+        Module(new HistoryBufferTest(2,
           Seq.tabulate(histBufLen)(i => insertReq(i, i)),
-          histBufLen,
           searchReq(histBufLen-1, 0),
           None
         ))

@@ -66,8 +66,8 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   val prefetch_filt = Wire(Decoupled(new IMSHRReq))
 
   /* Create input queues in order to cache memory requests and service them as fast as possible */
-  val (demand_q,   demand_q_elts  ) = ExposedShiftQueue(demand_filt,   entries=1, pipe=true, flow=true)
-  val (prefetch_q, prefetch_q_elts) = ExposedShiftQueue(prefetch_filt, entries=4, pipe=true, flow=true)
+  val (demand_q,   demand_q_elts  ) = ExposedShiftQueue(demand_filt,   entries=1)
+  val (prefetch_q, prefetch_q_elts) = ExposedShiftQueue(prefetch_filt, entries=prefetchQueueEntries)
 
   /* Detect whether an incomming demand or prefetch request corresponds to an already-inflight request.
    * This is a request with a matching physical address that is either already in the MSHR, or queued.
@@ -222,6 +222,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
   def nDemandMSHRs = cacheParams.nDemandMSHRs
   def nPrefetchMSHRs = entanglingParams.map(_.nPrefetchMSHRs).getOrElse(0)
   def nMSHRs = nDemandMSHRs + nPrefetchMSHRs
+  def prefetchQueueEntries = entanglingParams.map(_.prefetchMSHRQueueEntries).getOrElse(1)
 
   /* Make an access request to the L2 memory */
   def createGetRequest(paddr: UInt, cache: Bool, source: Int): TLBundleA = {

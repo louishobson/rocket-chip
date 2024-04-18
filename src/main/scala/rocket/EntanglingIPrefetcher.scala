@@ -37,6 +37,8 @@ case class EntanglingIPrefetcherParams(
   prefetchQueueSize: Int = 8,
   /* The number of outstanding prefetch requests */
   nPrefetchMSHRs: Int = 3,
+  /* The number of entries in the MSHR queue for prefetch requests */
+  prefetchMSHRQueueEntries: Int = 4,
   /* The number of bits used to store entanglings (just addresses, not the size) */
   entanglingAddrBits: Int = 60,
   /* The maximum number of entanglings which can be stored in entanglingAddrBits */
@@ -99,8 +101,11 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def entIdxBits = log2Up(eTableNSets)
   def entTagBits = baddrBits - entIdxBits
 
+  /* Require that the history buffer size is a power of two */
+  require(isPow2(histBufLen), "histBufLen must be a power of 2")
+
   /* The number of bits required to store a BB size */
-  def lgMaxBBSize = log2Up(maxBBSize + 1).toInt
+  def BBSizeBits = log2Up(maxBBSize + 1)
 
   /* The maximum possible baddr and time */
   def maxTime = (math.pow(2, timeBits)-1).toInt
@@ -294,7 +299,7 @@ class BBCounterReq(implicit p: Parameters) extends CoreBundle with HasEntangling
 class BBCounterResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val head = UInt(baddrBits.W)
   val pidx = UInt(pidxBits.W)
-  val size = UInt(lgMaxBBSize.W)
+  val size = UInt(BBSizeBits.W)
   val time = UInt(timeBits.W)
   val done = Bool()
 }
@@ -312,7 +317,7 @@ class BBCounter(implicit p: Parameters) extends CoreModule with HasEntanglingIPr
   /* Initialize the BB head, size and timestamp registers */
   val bb_head = Reg(UInt(baddrBits.W))
   val bb_pidx = Reg(UInt(pidxBits.W))
-  val bb_size = RegInit(0.U(lgMaxBBSize.W))
+  val bb_size = RegInit(0.U(BBSizeBits.W))
   val bb_time = Reg(UInt(timeBits.W))
   
   /* Calculate the change in io.req.bits.baddr compared to the current head.
@@ -375,87 +380,115 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
 
   /* Define the IO */
   val io = IO(new Bundle{
-    val insert_req = Flipped(Valid(new HistoryBufferInsertReq))
+    val insert_req = Flipped(Decoupled(new HistoryBufferInsertReq))
     val search_req = Flipped(Decoupled(new HistoryBufferSearchReq))
     val search_resp = Valid(new HistoryBufferSearchResp)
   })
 
-  /* Create the history buffer.
-   * Setting the timestamps to the maximum value ensures they are not viewed
-   * as a candidate for entangling before first assignment.
-   */
-  class HBBundle extends Bundle {
-    val head = UInt(baddrBits.W)
-    val time = UInt(timeBits.W)
-  }
-  val hist_buf = RegInit(VecInit(Seq.fill(histBufLen)((new HBBundle).Lit(_.time -> maxTime.U))))
+  /* Create queues for the inputs since searching can take many cycles */
+  val insert_q = Queue(io.insert_req, 2)
+  val search_q = Queue(io.search_req, 2)
 
-  /* Insert a new significant block into the end of the history buffer */
-  when(io.insert_req.valid) {
-    hist_buf(histBufLen-1).head := io.insert_req.bits.head
-    hist_buf(histBufLen-1).time := io.insert_req.bits.time
-    for (i <- 0 until histBufLen-1) {
-      hist_buf(i).head := hist_buf(i+1).head
-      hist_buf(i).time := hist_buf(i+1).time
-    }
+  /* Create the history buffer */
+  val hist_buf = DescribedSRAM(
+    name = "history_buffer_data_array",
+    desc = "Entangling Prefetcher History Buffer",
+    size = histBufLen,
+    data = Bits((baddrBits+timeBits).W)
+  )
+
+  /* Read and write into the memory */
+  val hb_idx = WireDefault(UInt(log2Up(histBufLen).W), DontCare)
+  val hb_write_data = WireDefault(Bits((baddrBits+timeBits).W), DontCare)
+  val hb_write_en = WireDefault(Bool(), false.B)
+  val hb_en = WireDefault(Bool(), false.B)
+  val hb_read_data = hist_buf.read(hb_idx, hb_en && !hb_write_en)
+  when(hb_en && hb_write_en) {
+    hist_buf.write(hb_idx, hb_write_data)
   }
-  
-  /* Define a bundle which will be used to store search data */
-  class HBSearchBundle extends Bundle {
+
+  /* Create the pointer to the head of the history buffer */
+  val ptr = RegInit(0.U(log2Up(histBufLen).W))
+
+  /* Define a register to store the state between iterations of the search */
+  val search_status = RegInit((new Bundle {
     val src = UInt(baddrBits.W)
     val dst = UInt(baddrBits.W)
     val target_time = UInt(timeBits.W)
+    val iter = UInt(log2Up(histBufLen).W)
     val valid = Bool()
     val found = Bool()
+  }).Lit(_.valid -> false.B))
+
+  /* We are ready for new insertions when we are not searching.
+   * We are ready for a search when there is no pending insert request.
+   */
+  insert_q.ready := !search_status.valid
+  search_q.ready := !insert_q.valid
+
+  /* Prioritise inserting new blocks into the history buffer */
+  when(insert_q.fire) {
+    writeHB(ptr + 1.U, insert_q.bits.head ## insert_q.bits.time)
+    ptr := ptr + 1.U
   }
 
-  /* Define a register to store the state between iterations of the search,
-   * and an iterator to indicate the current iteration
-   */
-  val search_status = RegInit((new HBSearchBundle).Lit(_.valid -> false.B))
-  val search_iter = Reg(UInt(log2Up(histBufLen+1).W))
-  when(io.search_req.fire) {
-    search_iter := histBufLen.U
+  /* Otherwise start a search if one has been requested */
+  .elsewhen(search_q.fire) {
     search_status.src := DontCare
-    search_status.dst := io.search_req.bits.dst
-    search_status.target_time := io.search_req.bits.target_time
+    search_status.dst := search_q.bits.dst 
+    search_status.target_time := search_q.bits.target_time
+    search_status.iter := ptr
     search_status.valid := true.B
     search_status.found := false.B
+    readHB(ptr)
   }
-
+  
   /* Keep searching while the search register is valid */
   when(search_status.valid) {
+    /* Get the current head and time for the search */
+    val (hb_head, hb_time) = Split(hb_read_data, timeBits)
 
-    /* Invalidate the search register if a source is found or we reach the end of the buffer */
-    when(search_status.found || search_iter === 0.U) {
-      search_status.valid := false.B
-    } 
+    /* Invalidate the search register if
+     * - a source is found, or
+     * - we have cycled the buffer, or
+     * - a timestamp of 0 is seen, or
+     * - or the destination address is seen in the buffer.
+     */
+    val stop_search = search_status.found || (search_status.iter === ptr && !RegNext(search_q.fire)) || hb_time === 0.U || hb_head === search_status.dst
+    search_status.valid := !stop_search 
 
-    /* Otherwise we must not have found a result, so keep searching */
-    .otherwise {
-      /* Decrement the iterator */
-      val search_iter1 = search_iter - 1.U
-      search_iter := search_iter1
-
-      /* Invalidate the search if we see the destination destination basic block.
-       * Otherwise if we see a time before the target time, we can stop the search.
-       */
-      search_status.valid := hist_buf(search_iter1).head =/= search_status.dst
-      when(hist_buf(search_iter1).time <= search_status.target_time) {
-        search_status.src := hist_buf(search_iter1).head 
+    /* When we are not stopping the search... */
+    when(!stop_search) {
+      /* If we see a time before the target time, we can stop the search */
+      when(hb_time <= search_status.target_time) {
+        search_status.src := hb_head
         search_status.found := true.B
       }
+
+      /* Decrement the search iterator and access the memory */
+      search_status.iter := search_status.iter - 1.U
+      readHB(search_status.iter - 1.U)
     }
   }
-
-  /* We are ready for another search request when the search register is invalid */
-  io.search_req.ready := !search_status.valid
 
   /* Output the result of the search */
   io.search_resp.valid := search_status.valid && search_status.found
   io.search_resp.bits.src := search_status.src
   io.search_resp.bits.dst := search_status.dst
 
+  /* Read from the history buffer */
+  def readHB(idx: UInt) = {
+    hb_idx := idx
+    hb_en := true.B
+  }
+
+  /* Write into the history buffer */
+  def writeHB(idx: UInt, data: Bits) = {
+    hb_idx := idx
+    hb_write_data := data
+    hb_en := true.B
+    hb_write_en := true.B
+  }
 }
 
 
@@ -471,7 +504,7 @@ class EntanglingTablePrefetchReq(implicit p: Parameters) extends CoreBundle with
 class EntanglingTablePrefetchResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val head = UInt(baddrBits.W)
   val pidx = UInt(pidxBits.W)
-  val size = UInt(lgMaxBBSize.W)
+  val size = UInt(BBSizeBits.W)
 }
 
 /** [[EntanglingTableUpdateReq]] defines the interface for updating a basic block size.
@@ -479,7 +512,7 @@ class EntanglingTablePrefetchResp(implicit p: Parameters) extends CoreBundle wit
 class EntanglingTableUpdateReq(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
   val head = UInt(baddrBits.W)
   val pidx = UInt(pidxBits.W)
-  val size = UInt(lgMaxBBSize.W)
+  val size = UInt(BBSizeBits.W)
 }
 
 /** [[EntanglingTableEntangleReq]] defines the interface for requesting an entangling is made.
@@ -524,7 +557,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
 
   /* Define queues for each of the request types */
-  val prefetch_q = Queue(io.prefetch_req, eTablePrefetchQueueSize, flow=true)
+  val prefetch_q = Queue(io.prefetch_req, eTablePrefetchQueueSize)
   val update_q = Queue(io.update_req, eTableUpdateQueueSize)
   val entangle_q = Queue(io.entangle_req, eTableEntangleQueueSize)
 
@@ -574,7 +607,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
     name = "entangling_tag_and_size_array",
     desc = "Entangling Prefetcher Tag and Size Array",
     size = eTableNSets,
-    data = Vec(eTableNWays, Bits((lgMaxBBSize+pidxBits+entTagBits+1).W))
+    data = Vec(eTableNWays, Bits((BBSizeBits+pidxBits+entTagBits+1).W))
   )
 
   /* Define the entangling SRAM */
@@ -622,7 +655,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
 
   /* Create wires that are always connected to the memory write port */
   val write_baddr = WireDefault(UInt(baddrBits.W), DontCare)
-  val write_size = WireDefault(UInt(lgMaxBBSize.W), DontCare)
+  val write_size = WireDefault(UInt(BBSizeBits.W), DontCare)
   val write_pidx = WireDefault(UInt(pidxBits.W), DontCare)
   val write_ents = WireDefault(UInt(entanglingBits.W), DontCare)
   val write_size_enable = WireDefault(false.B)
@@ -913,7 +946,7 @@ class PrefetchQueue(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Queue the input. The queue leads straight into a register, 
    * so it makes sense to enable flow-through. 
    */
-  val req_q = Queue(io.req, prefetchQueueSize, pipe=true, flow=true)
+  val req_q = Queue(io.req, prefetchQueueSize, flow=true)
 
   /* The current BB being distributed */
   val current_req = RegInit((new EntanglingTablePrefetchResp).Lit(_.size -> 0.U))
@@ -1023,11 +1056,8 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
     /* Link up the search IO. We don't need to search if
      *  - the miss is invalid, or
      *  - the miss address isn't for this BB's head.
-     * Assert that the history buffer is ready for a search. If it isn't then something strange has happened:
-     * a search request only comes in on a refill finishing, and a refill takes at least eight cycles.
      */
     val miss_baddr = io.miss_req.bits.paddr >> blockOffBits
-    assert(!history_buffer.io.search_req.valid || history_buffer.io.search_req.ready)
     history_buffer.io.search_req.valid := io.miss_req.valid && miss_baddr === bb_counter.io.resp.head
     history_buffer.io.search_req.bits.dst := miss_baddr
     history_buffer.io.search_req.bits.target_time := bb_counter.io.resp.time - (time - bb_counter.io.resp.time + prefetchIssueLatency.U)
@@ -1208,14 +1238,12 @@ class BBCounterTest(
   * 
   * @param id The ID of the test (for debugging purposes).
   * @param in A sequence of insert requests to make to the history buffer.
-  * @param delay A delay (in cycles) before making the search requests.
   * @param query A search request to make after delay cycles.
   * @param out A response to expect from the search request, or no response.
   */
 class HistoryBufferTest(
   id: Int, 
   in: Seq[HistoryBufferInsertReq], 
-  delay: Int, 
   query: HistoryBufferSearchReq, 
   out: Option[HistoryBufferSearchResp]
 )(implicit val p: Parameters) extends UnitTest with HasEntanglingIPrefetcherParameters {
@@ -1232,7 +1260,7 @@ class HistoryBufferTest(
     val started = RegEnable(io.start, false.B, io.start)
 
     /* Create registers to iterate over the inputs/outputs */
-    def maxIterations = in.length.max(delay+histBufLen+2)
+    def maxIterations = in.length + histBufLen + 4
     val i = RegInit(0.U(log2Up(maxIterations+1).W))
 
     /* Iterate i */
@@ -1243,7 +1271,7 @@ class HistoryBufferTest(
     history_buffer.io.insert_req.bits := in_rom(i)
 
     /* Wire up the search request */
-    history_buffer.io.search_req.valid := started && i === delay.U
+    history_buffer.io.search_req.valid := started && i === in.length.U
     history_buffer.io.search_req.bits := query
 
     /* Remember if an output has been seen */ 
