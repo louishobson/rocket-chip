@@ -403,6 +403,7 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   val hb_write_en = WireDefault(Bool(), false.B)
   val hb_en = WireDefault(Bool(), false.B)
   val hb_read_data = hist_buf.read(hb_idx, hb_en && !hb_write_en)
+  val (hb_read_head, hb_read_time) = Split(hb_read_data, timeBits)
   when(hb_en && hb_write_en) {
     hist_buf.write(hb_idx, hb_write_data)
   }
@@ -410,20 +411,18 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
   /* Create the pointer to the head of the history buffer */
   val ptr = RegInit(0.U(log2Up(histBufLen).W))
 
-  /* Define a register to store the state between iterations of the search */
-  val search_status = RegInit((new Bundle {
-    val src = UInt(baddrBits.W)
-    val dst = UInt(baddrBits.W)
-    val target_time = UInt(timeBits.W)
-    val iter = UInt(log2Up(histBufLen).W)
-    val valid = Bool()
-    val found = Bool()
-  }).Lit(_.valid -> false.B))
+  /* Define registers to store the state between iterations of the search */
+  val search_src = Reg(UInt(baddrBits.W))
+  val search_dst = Reg(UInt(baddrBits.W))
+  val search_target_time = Reg(UInt(timeBits.W))
+  val search_iter = Reg(UInt(log2Up(histBufLen).W))
+  val search_valid = Reg(Bool())
+  val search_found = Reg(Bool())
 
   /* We are ready for new insertions when we are not searching.
    * We are ready for a search when there is no pending insert request.
    */
-  insert_q.ready := !search_status.valid
+  insert_q.ready := !search_valid
   search_q.ready := !insert_q.valid
 
   /* Prioritise inserting new blocks into the history buffer */
@@ -434,47 +433,44 @@ class HistoryBuffer(implicit p: Parameters) extends CoreModule with HasEntanglin
 
   /* Otherwise start a search if one has been requested */
   .elsewhen(search_q.fire) {
-    search_status.src := DontCare
-    search_status.dst := search_q.bits.dst 
-    search_status.target_time := search_q.bits.target_time
-    search_status.iter := ptr
-    search_status.valid := true.B
-    search_status.found := false.B
+    search_src := DontCare
+    search_dst := search_q.bits.dst 
+    search_target_time := search_q.bits.target_time
+    search_iter := ptr
+    search_valid := true.B
+    search_found := false.B
     readHB(ptr)
   }
   
   /* Keep searching while the search register is valid */
-  when(search_status.valid) {
-    /* Get the current head and time for the search */
-    val (hb_head, hb_time) = Split(hb_read_data, timeBits)
-
+  when(search_valid) {
     /* Invalidate the search register if
      * - a source is found, or
      * - we have cycled the buffer, or
      * - a timestamp of 0 is seen, or
      * - or the destination address is seen in the buffer.
      */
-    val stop_search = search_status.found || (search_status.iter === ptr && !RegNext(search_q.fire)) || hb_time === 0.U || hb_head === search_status.dst
-    search_status.valid := !stop_search 
+    val stop_search = search_found || (search_iter === ptr && !RegNext(search_q.fire)) || hb_read_time === 0.U || hb_read_head === search_dst
+    search_valid := !stop_search 
 
     /* When we are not stopping the search... */
     when(!stop_search) {
       /* If we see a time before the target time, we can stop the search */
-      when(hb_time <= search_status.target_time) {
-        search_status.src := hb_head
-        search_status.found := true.B
+      when(hb_read_time <= search_target_time) {
+        search_src := hb_read_head
+        search_found := true.B
       }
 
       /* Decrement the search iterator and access the memory */
-      search_status.iter := search_status.iter - 1.U
-      readHB(search_status.iter - 1.U)
+      search_iter := search_iter - 1.U
+      readHB(search_iter - 1.U)
     }
   }
 
   /* Output the result of the search */
-  io.search_resp.valid := search_status.valid && search_status.found
-  io.search_resp.bits.src := search_status.src
-  io.search_resp.bits.dst := search_status.dst
+  io.search_resp.valid := search_valid && search_found
+  io.search_resp.bits.src := search_src
+  io.search_resp.bits.dst := search_dst
 
   /* Read from the history buffer */
   def readHB(idx: UInt) = {
