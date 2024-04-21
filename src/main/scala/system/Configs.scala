@@ -52,9 +52,9 @@ class EntanglingIPrefetcherConfig(
   entanglingNWays: Int = 4,
   entanglingAddrBits: Int = 44, 
   maxEntanglings: Int = 4,
-  maxEntanglingBBFetch: Option[Int] = None,
+  maxEntangledBBFetch: Option[Int] = None,
 ) extends Config(
-  new WithEntanglingIPrefetcherMaxEntanglingBBFetch(maxEntanglingBBFetch) ++
+  new WithEntanglingIPrefetcherMaxEntangledBBFetch(maxEntangledBBFetch) ++
   new WithEntanglingIPrefetcherIssueLatency(24) ++
   new WithEntanglingIPrefetcherTableSize(entanglingNSets, entanglingNWays) ++
   new WithEntanglingIPrefetcherCompressionCfg(entanglingAddrBits, maxEntanglings) ++
@@ -70,8 +70,8 @@ class EntanglingIPrefetcherNoPrefetcherBaselineConfig extends EntanglingIPrefetc
 class EntanglingIPrefetcherTestConfig extends EntanglingIPrefetcherConfig
 
 
-class EntanglingIPrefetcherNoEntanglingConfig extends EntanglingIPrefetcherConfig(maxEntanglingBBFetch=Some(0))
-class EntanglingIPrefetcherNoEntanglingSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, maxEntanglingBBFetch=Some(0))
+class EntanglingIPrefetcherNoEntanglingConfig extends EntanglingIPrefetcherConfig(maxEntangledBBFetch=Some(0))
+class EntanglingIPrefetcherNoEntanglingSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, maxEntangledBBFetch=Some(0))
 
 
 
@@ -91,35 +91,35 @@ class EntanglingIPrefetcherMaxEntanglings6CompressedSmallICacheConfig extends En
 
 
 
-class EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26, maxEntanglings=1, maxEntanglingBBFetch=Some(1))
-class EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=32, maxEntanglings=2, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=38, maxEntanglings=3, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=44, maxEntanglings=4, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=52, maxEntanglings=5, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=60, maxEntanglings=6, maxEntanglingBBFetch=Some(1))
+class EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26, maxEntanglings=1, maxEntangledBBFetch=Some(1))
+class EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=32, maxEntanglings=2, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=38, maxEntanglings=3, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=44, maxEntanglings=4, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=52, maxEntanglings=5, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=60, maxEntanglings=6, maxEntangledBBFetch=Some(1))
 
-class EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26, maxEntanglings=1, maxEntanglingBBFetch=Some(1))
-class EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=32, maxEntanglings=2, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=38, maxEntanglings=3, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=44, maxEntanglings=4, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=52, maxEntanglings=5, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=60, maxEntanglings=6, maxEntanglingBBFetch=Some(1))
+class EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26, maxEntanglings=1, maxEntangledBBFetch=Some(1))
+class EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=32, maxEntanglings=2, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=38, maxEntanglings=3, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=44, maxEntanglings=4, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=52, maxEntanglings=5, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=60, maxEntanglings=6, maxEntangledBBFetch=Some(1))
 
 
 
-class EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26, maxEntanglings=1, maxEntanglingBBFetch=Some(2))
-class EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=32, maxEntanglings=2, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=38, maxEntanglings=3, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=44, maxEntanglings=4, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=52, maxEntanglings=5, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=60, maxEntanglings=6, maxEntanglingBBFetch=Some(2))
+class EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26, maxEntanglings=1, maxEntangledBBFetch=Some(2))
+class EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=32, maxEntanglings=2, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=38, maxEntanglings=3, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=44, maxEntanglings=4, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=52, maxEntanglings=5, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=60, maxEntanglings=6, maxEntangledBBFetch=Some(2))
 
-class EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26, maxEntanglings=1, maxEntanglingBBFetch=Some(2))
-class EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=32, maxEntanglings=2, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=38, maxEntanglings=3, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=44, maxEntanglings=4, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=52, maxEntanglings=5, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=60, maxEntanglings=6, maxEntanglingBBFetch=Some(2))
+class EntanglingIPrefetcherMaxEntanglings1CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26, maxEntanglings=1, maxEntangledBBFetch=Some(2))
+class EntanglingIPrefetcherMaxEntanglings2CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=32, maxEntanglings=2, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings3CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=38, maxEntanglings=3, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings4CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=44, maxEntanglings=4, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings5CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=52, maxEntanglings=5, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings6CompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=60, maxEntanglings=6, maxEntangledBBFetch=Some(2))
 
 
 
@@ -139,35 +139,35 @@ class EntanglingIPrefetcherMaxEntanglings6UncompressedSmallICacheConfig extends 
 
 
 
-class EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*1, maxEntanglings=1, maxEntanglingBBFetch=Some(1))
-class EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*2, maxEntanglings=2, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*3, maxEntanglings=3, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*4, maxEntanglings=4, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*5, maxEntanglings=5, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*6, maxEntanglings=6, maxEntanglingBBFetch=Some(1))
+class EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*1, maxEntanglings=1, maxEntangledBBFetch=Some(1))
+class EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*2, maxEntanglings=2, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*3, maxEntanglings=3, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*4, maxEntanglings=4, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*5, maxEntanglings=5, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*6, maxEntanglings=6, maxEntangledBBFetch=Some(1))
 
-class EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*1, maxEntanglings=1, maxEntanglingBBFetch=Some(1))
-class EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*2, maxEntanglings=2, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*3, maxEntanglings=3, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*4, maxEntanglings=4, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*5, maxEntanglings=5, maxEntanglingBBFetch=Some(1)) 
-class EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*6, maxEntanglings=6, maxEntanglingBBFetch=Some(1))
+class EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*1, maxEntanglings=1, maxEntangledBBFetch=Some(1))
+class EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*2, maxEntanglings=2, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*3, maxEntanglings=3, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*4, maxEntanglings=4, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*5, maxEntanglings=5, maxEntangledBBFetch=Some(1)) 
+class EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*6, maxEntanglings=6, maxEntangledBBFetch=Some(1))
 
 
 
-class EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*1, maxEntanglings=1, maxEntanglingBBFetch=Some(2))
-class EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*2, maxEntanglings=2, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*3, maxEntanglings=3, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*4, maxEntanglings=4, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*5, maxEntanglings=5, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*6, maxEntanglings=6, maxEntanglingBBFetch=Some(2))
+class EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*1, maxEntanglings=1, maxEntangledBBFetch=Some(2))
+class EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*2, maxEntanglings=2, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*3, maxEntanglings=3, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*4, maxEntanglings=4, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*5, maxEntanglings=5, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoConfig extends EntanglingIPrefetcherConfig(entanglingAddrBits=26*6, maxEntanglings=6, maxEntangledBBFetch=Some(2))
 
-class EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*1, maxEntanglings=1, maxEntanglingBBFetch=Some(2))
-class EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*2, maxEntanglings=2, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*3, maxEntanglings=3, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*4, maxEntanglings=4, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*5, maxEntanglings=5, maxEntanglingBBFetch=Some(2)) 
-class EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*6, maxEntanglings=6, maxEntanglingBBFetch=Some(2))
+class EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*1, maxEntanglings=1, maxEntangledBBFetch=Some(2))
+class EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*2, maxEntanglings=2, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*3, maxEntanglings=3, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*4, maxEntanglings=4, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*5, maxEntanglings=5, maxEntangledBBFetch=Some(2)) 
+class EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoSmallICacheConfig extends EntanglingIPrefetcherConfig(nSets=32, nWays=2, entanglingAddrBits=26*6, maxEntanglings=6, maxEntangledBBFetch=Some(2))
 
 
 

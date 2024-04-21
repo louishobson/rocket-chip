@@ -757,8 +757,8 @@ class WithEntanglingIPrefetcherIssueLatency(issueLatency: Int) extends WithTrans
   prefetchIssueLatency = issueLatency
 ))
 
-class WithEntanglingIPrefetcherMaxEntanglingBBFetch(maxEntanglingBBFetch: Option[Int]) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
-  maxEntanglingBBFetch = maxEntanglingBBFetch
+class WithEntanglingIPrefetcherMaxEntangledBBFetch(maxEntangledBBFetch: Option[Int]) extends WithTransformedEntanglingIPrefetcherParams(_.copy(
+  maxEntangledBBFetch = maxEntangledBBFetch
 ))
 
 class WithL1ICacheNDemandMSHRs(nDemandMSHRs: Int) extends Config((site, here, up) => {
