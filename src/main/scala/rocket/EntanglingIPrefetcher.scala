@@ -1028,7 +1028,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   val entangling_table = Module(new EntanglingTable)
 
   /* We don't want to keep asking the entangling table to look up the same baddr.
-   * Only look up if we're extending the current basic block.
+   * Only look up if we're extending the current basic block or starting a new one.
    */
   entangling_table.io.prefetch_req.valid := io.fetch_req.valid && !bb_counter.io.resp.seen
   entangling_table.io.prefetch_req.bits.baddr := fetch_baddr
