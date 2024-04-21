@@ -302,6 +302,7 @@ class BBCounterResp(implicit p: Parameters) extends CoreBundle with HasEntanglin
   val size = UInt(BBSizeBits.W)
   val time = UInt(timeBits.W)
   val done = Bool()
+  val seen = Bool()
 }
 
 /** [[BBCounter]] implements a counter for baddrs, emitting a when appropriate.
@@ -342,11 +343,12 @@ class BBCounter(implicit p: Parameters) extends CoreModule with HasEntanglingIPr
   /* Potentially output a completed significant BB. This is when a basic block reaches a size of sigBBSize.
    * This can stop tiny basic blocks from filling the entangling table.
    */
-  io.resp.done := !cont && bb_size >= sigBBSize.U
   io.resp.head := bb_head
   io.resp.pidx := bb_pidx
   io.resp.size := bb_size
   io.resp.time := bb_time
+  io.resp.done := !cont && bb_size >= sigBBSize.U
+  io.resp.seen := cont && !grow
 
 }
 
@@ -1028,7 +1030,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   /* We don't want to keep asking the entangling table to look up the same baddr.
    * Only look up if we're extending the current basic block.
    */
-  entangling_table.io.prefetch_req.valid := io.fetch_req.valid && (fetch_baddr < bb_counter.io.resp.head || fetch_baddr >= bb_counter.io.resp.head + bb_counter.io.resp.size)
+  entangling_table.io.prefetch_req.valid := io.fetch_req.valid && !bb_counter.io.seen
   entangling_table.io.prefetch_req.bits.baddr := fetch_baddr
 
   /* Link up the new BB IO */
