@@ -54,7 +54,7 @@ case class EntanglingIPrefetcherParams(
   /* When triggering prefetches for dst-entangled BBs, limit the BB size to this value.
    * When set to 0, the history buffer is removed and the entangling table IO for entangling creation is tied off.
    */
-  maxEntanglingBBFetch: Option[Int] = None,
+  maxEntangedBBFetch: Option[Int] = None,
 )
 
 /** [[HasEntanglingIPrefetcherParameters]] is the trait for a class which needs EntanglingIPrefetcherParams.
@@ -81,7 +81,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
   def maxEntanglings = entanglingParams.maxEntanglings
   def prefetchIssueLatency = entanglingParams.prefetchIssueLatency
   def profilingHistBufLen = entanglingParams.profilingHistBufLen
-  def maxEntanglingBBFetch = entanglingParams.maxEntanglingBBFetch
+  def maxEntangedBBFetch = entanglingParams.maxEntangedBBFetch
 
   /* The block address size */
   def baddrBits = paddrBits - blockOffBits
@@ -817,7 +817,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
         io.prefetch_resp.valid := true.B
         io.prefetch_resp.bits.head := prefetch_baddrs(prefetch_len)
         io.prefetch_resp.bits.pidx := read_pidx
-        io.prefetch_resp.bits.size := maxEntanglingBBFetch.map(_.U min read_size).getOrElse(read_size)
+        io.prefetch_resp.bits.size := maxEntangedBBFetch.map(_.U min read_size).getOrElse(read_size)
 
         /* Record the valid entangling and the end of prefetch_baddrs */
         prefetch_valid_baddrs_len := prefetch_valid_baddrs_len + 1.U
@@ -1040,7 +1040,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
 
 
   /* We only need a history buffer if entangling is enabled */
-  if (maxEntanglingBBFetch.isEmpty || maxEntanglingBBFetch.get > 0) {
+  if (maxEntangedBBFetch.isEmpty || maxEntangedBBFetch.get > 0) {
     /* Create the history buffer */
     val history_buffer = Module(new HistoryBuffer)
 
