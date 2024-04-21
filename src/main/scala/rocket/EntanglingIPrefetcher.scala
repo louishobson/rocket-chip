@@ -93,7 +93,7 @@ trait HasEntanglingIPrefetcherParameters extends HasL1ICacheParameters {
    * pidxBits ¬
    *   |----|---|-------------|
    */
-  def pidxBits = 0.max(blockOffBits + idxBits - pgIdxBits)
+  def pidxBits = 0 max (blockOffBits + idxBits - pgIdxBits)
 
   /* Configuration for the entangling table */
   require(isPow2(eTableNSets), "entanglingNSets must be a power of 2")
@@ -723,7 +723,7 @@ class EntanglingTable(implicit p: Parameters) extends CoreModule with HasEntangl
       when(!read_hit) {
         writeRandom(update_r.head, update_r.size, update_r.pidx)
       } .elsewhen(update_r.size > read_size || read_pidx =/= update_r.pidx) {
-        writeAtWay(update_r.head, read_hits, Some((update_r.size, update_r.pidx)))
+        writeAtWay(update_r.head, read_hits, Some((update_r.size max read_size, update_r.pidx)))
       }
 
       /* Move into the ready state */

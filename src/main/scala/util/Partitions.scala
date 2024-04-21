@@ -50,17 +50,15 @@ object Partitions {
 object PartitionsOH {
 
     def apply(in: UInt, maxNumPartitions: Int): Seq[UInt] = {
-        /* Get the maximum value plus one of in */
-        val maxIn = 1 << in.getWidth
-
         /* Create a (k -> v) map where v = in < k.U */
+        val maxIn = 1 << in.getWidth
         val cmp_map = collection.mutable.Map(0 -> false.B, maxIn -> true.B)
 
-        /* Iterate over the numbers of partitions */
+        /* Iterate over the variety of partitions */
         (1 to maxNumPartitions).map(numPartitions => 
-            /* Iterate over the number of partitions */
+            /* Iterate to create numPartitions number of partitions */
             (0 until numPartitions).map(partition => {
-                /* Detect whether (in) is inside this partition, using previously computed comparisons */
+                /* Detect whether (in) is inside this partition using previously computed comparisons */
                 val lb = ((maxIn*partition)/numPartitions).toInt
                 val ub = ((maxIn*(partition+1))/numPartitions).toInt
                 !cmp_map.getOrElseUpdate(lb, in < lb.U) && cmp_map.getOrElseUpdate(ub, in < ub.U)
