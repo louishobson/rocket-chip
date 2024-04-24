@@ -11,7 +11,6 @@ import freechips.rocketchip.subsystem.{BaseSubsystemConfig}
 import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
-import freechips.rocketchip.rocket._
 
 case object TestDurationMultiplier extends Field[Int]
 
