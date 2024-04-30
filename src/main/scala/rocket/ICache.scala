@@ -1,5 +1,6 @@
 // See LICENSE.Berkeley for license details.
 // See LICENSE.SiFive for license details.
+// See LICENSE.Hobson for license details.
 
 package freechips.rocketchip.rocket
 

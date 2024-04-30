@@ -1,3 +1,5 @@
+// See LICENSE.Hobson for license details.
+
 package freechips.rocketchip.tiletest
 
 import chisel3._
