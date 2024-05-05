@@ -1055,7 +1055,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
      * We only want this to report as a single miss (the first instance when the miss occured), 
      * which is why we want the second condition here.
      */
-    io.extPerf.get.cache_miss := s2_miss && !(ongoing_demand_miss && s2_vaddr(untagBits-1,blockOffBits) === demand_miss_index)
+    io.extPerf.get.cache_miss := mshr.io.demand_req.fire && !(ongoing_demand_miss && s2_vaddr(untagBits-1,blockOffBits) === demand_miss_index)
 
     /* !! DEMAND/PREFETCH REFILL !! Report when a refill occurs and its type */
     io.extPerf.get.demand_refill := refill_done && mshr.io.resp.bits.demand
