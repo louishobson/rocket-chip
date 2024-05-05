@@ -71,36 +71,40 @@ MAX_ENTANGLINGS_CONFIGS := \
 	EntanglingIPrefetcherMaxEntanglings4UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings5UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings6UncompressedConfig \
-	EntanglingIPrefetcherMaxEntanglings1UncompressedSmallICacheConfig \
-	EntanglingIPrefetcherMaxEntanglings2UncompressedSmallICacheConfig \
-	EntanglingIPrefetcherMaxEntanglings3UncompressedSmallICacheConfig \
-	EntanglingIPrefetcherMaxEntanglings4UncompressedSmallICacheConfig \
-	EntanglingIPrefetcherMaxEntanglings5UncompressedSmallICacheConfig \
-	EntanglingIPrefetcherMaxEntanglings6UncompressedSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadConfig \
 	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadConfig \
 	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadConfig \
 	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadConfig \
 	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadConfig \
 	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadConfig \
+	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoConfig \
+	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoConfig
+	
+MAX_ENTANGLINGS_SMALL_ICACHE_CONFIGS := \
+	EntanglingIPrefetcherMaxEntanglings1UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings2UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings3UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings4UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings5UncompressedSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings6UncompressedSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadSmallICacheConfig \
-	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoConfig \
-	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoConfig \
-	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoConfig \
-	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoConfig \
-	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoConfig \
-	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoConfig \
 	EntanglingIPrefetcherMaxEntanglings1UncompressedOnlyHeadTwoSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings2UncompressedOnlyHeadTwoSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings3UncompressedOnlyHeadTwoSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings4UncompressedOnlyHeadTwoSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings5UncompressedOnlyHeadTwoSmallICacheConfig \
-	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoSmallICacheConfig \
+	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoSmallICacheConfig
+
+MAX_ENTANGLINGS_COMPRESSED_CONFIGS := \
 	EntanglingIPrefetcherMaxEntanglings1CompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings2CompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings3CompressedConfig \
@@ -170,6 +174,15 @@ OCEAN_CP_RUN_CONFIG      = $(patsubst run-ocean-cp.%,%,$@)
 build-all::
 	$(MAKE) $(ALL_BUILD_TARGETS)
 
+build-all-tablesize::
+	$(MAKE) $(TABLESIZE_BUILD_TARGETS)
+
+build-all-cachesize::
+	$(MAKE) $(CACHESIZE_BUILD_TARGETS)
+
+build-all-max-entanglings::
+	$(MAKE) $(MAX_ENTANGLINGS_BUILD_TARGETS)	
+
 build.%::
 	if [ ! -f $(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(BUILD_CONFIG)/verilator/elf.dest/emulator ]; \
 	then \
@@ -187,7 +200,7 @@ run-all-max-entanglings::
 	$(MAKE) $(MAX_ENTANGLINGS_RUN_TARGETS)
 
 run-all.%::
-	$(MAKE) run-radiosity.% run-barnes.% run-water-spatial.% run-ocean-cp.%
+	$(MAKE) $(patsubst run-all.%,run-radiosity.%,$@) $(patsubst run-all.%,run-barnes.%,$@) $(patsubst run-all.%,run-water-spatial.%,$@) $(patsubst run-all.%,run-ocean-cp.%,$@)
 
 run-radiosity-all::
 	$(MAKE) $(RADIOSITY_RUN_TARGETS)
