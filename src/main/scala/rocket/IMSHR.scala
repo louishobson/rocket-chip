@@ -53,6 +53,7 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     val d_channel = Flipped(Decoupled(new TLBundleD(edge.bundle)))
     val resp = Decoupled(new IMSHRResp(edge))
     val is_busy = Output(Bool())
+    val late_prefetch = Output(Bool())
   })
 
   /* Define the status registers */
@@ -81,6 +82,12 @@ class IMSHR(edge: TLEdgeOut)(implicit p: Parameters) extends CoreModule with Has
     demand_q_elts.map  (r => r.valid && r.bits.paddr === io.prefetch_req.bits.paddr).asUInt.orR || 
     prefetch_q_elts.map(r => r.valid && r.bits.paddr === io.prefetch_req.bits.paddr).asUInt.orR ||
     (io.demand_req.valid && io.demand_req.bits.paddr === io.prefetch_req.bits.paddr)
+
+  /* Detect whether a prefetch is late since a demand request has come in for that prefetch */
+  io.late_prefetch := io.demand_req.valid && (
+    status.map(s => s.valid && !s.demand && s.paddr === io.demand_req.bits.paddr).asUInt.orR ||
+    prefetch_q_elts.map(r => r.valid && r.bits.paddr === io.demand_req.bits.paddr).asUInt.orR
+  ) 
 
   /* Always accept but immediately discard duplicate requests */
   demand_filt.valid   := io.demand_req.valid   && !demand_inflight

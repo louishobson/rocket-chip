@@ -218,11 +218,14 @@ class ICacheExtPerfEvents extends Bundle {
   val demand_refill = Bool()
   val prefetch_refill = Bool()
   val prefetch_consumed = Bool()
+  val late_prefetch_suggestion = Bool()
   val late_prefetch = Bool()
   val early_prefetch = Bool()
   val no_prefetch = Bool()
   val erroneous_prefetch = Bool()
   val demand_miss_cycles = Bool()
+  val new_basic_block = Bool()
+  val emit_basic_block = Bool()
 }
 
 /** IO from CPU to ICache. */
@@ -916,7 +919,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
        */
       when(io.extPerf.get.cache_miss) {
         /* Insert into the miss history buffer */
-        miss_history.io.insert.valid := true.B
+        miss_history.io.insert.valid := !mshr.io.late_prefetch
         miss_history.io.insert.bits := s2_paddr
 
         /* Look at the evicted prefetch history */
@@ -986,17 +989,22 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
         miss_history.io.query.valid := true.B
         miss_history.io.query.bits := prefetcher.io.prefetch_resp.bits.paddr
 
-        /* !! LATE PREFETCH !! We have a late prefetch when we have a hit in the miss history buffer */
-        io.extPerf.get.late_prefetch := miss_history.io.query_result
+        /* !! LATE PREFETCH SUGGESTION !! We have a late prefetch when we have a hit in the miss history buffer */
+        io.extPerf.get.late_prefetch_suggestion := miss_history.io.query_result
       } .otherwise {
         /* Tie off the performance monitors */
         io.extPerf.get.prefetch_consumed := false.B
-        io.extPerf.get.late_prefetch := false.B
+        io.extPerf.get.late_prefetch_suggestion := false.B
 
         /* Tie off the query IO of the miss history buffer */
         miss_history.io.query.valid := false.B
         miss_history.io.query.bits := DontCare
       }
+
+      /* !! LATE PREFETCH !! 
+       * Report an executed prefetch for which a demand request was made before the refill completed.
+       */
+      io.extPerf.get.late_prefetch := mshr.io.late_prefetch
 
       /* !! NO PREFETCH !! 
        * Report a missing prefetch when a valid miss is evicted from the history.
@@ -1007,6 +1015,10 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
        * Report an erroneous prefetch when an evicted prefetch is also evicted from the history.
        */
       io.extPerf.get.erroneous_prefetch := evicted_prefetch_history.io.evicted.valid
+
+      /* !! NEW BASIC BLOCK and EMIT BASIC BLOCK !! */
+      io.extPerf.get.new_basic_block := prefetcher.io.perf_resp.new_basic_block
+      io.extPerf.get.emit_basic_block := prefetcher.io.perf_resp.emit_basic_block
     }
 
   } else {
@@ -1021,10 +1033,13 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     /* Tie off performance monitoring */
     if(cacheParams.enableProfiling) {
       io.extPerf.get.prefetch_consumed := false.B
+      io.extPerf.get.late_prefetch_suggestion := false.B
       io.extPerf.get.late_prefetch := false.B
       io.extPerf.get.early_prefetch := false.B
       io.extPerf.get.no_prefetch := false.B
       io.extPerf.get.erroneous_prefetch := false.B
+      io.extPerf.get.new_basic_block := false.B
+      io.extPerf.get.emit_basic_block := false.B
     }
   }
 

@@ -41,7 +41,7 @@ class WithBBCounterTests extends Config((site, here, up) => {
   case UnitTests => (q: Parameters) => {
     class Tests(implicit val p: Parameters) extends HasEntanglingIPrefetcherParameters {
       def req(baddr: Int, timepidx: Int, valid: Boolean = true) = ((new BBCounterReq).Lit(_.baddr -> baddr.U, _.time -> timepidx.U, _.pidx -> timepidx.U), valid.B)
-      def resp(head: Int, timepidx: Int, size: Int, done: Boolean) = (new BBCounterResp).Lit(_.head -> head.U, _.time -> timepidx.U, _.pidx -> timepidx.U, _.size -> size.U, _.done -> done.B)
+      def resp(head: Int, timepidx: Int, size: Int, emit: Boolean) = (new BBCounterResp).Lit(_.head -> head.U, _.time -> timepidx.U, _.pidx -> timepidx.U, _.size -> size.U, _.emit -> emit.B)
       def produce = Seq(
         /* TEST 1: a sequence of consecutive addresses just increases the size of the BB */
         Module(new BBCounterTest(0, 

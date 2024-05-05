@@ -303,7 +303,8 @@ class BBCounterResp(implicit p: Parameters) extends CoreBundle with HasEntanglin
   val pidx = UInt(pidxBits.W)
   val size = UInt(BBSizeBits.W)
   val time = UInt(timeBits.W)
-  val done = Bool()
+  val cont = Bool()
+  val emit = Bool()
   val seen = Bool()
 }
 
@@ -349,7 +350,8 @@ class BBCounter(implicit p: Parameters) extends CoreModule with HasEntanglingIPr
   io.resp.pidx := bb_pidx
   io.resp.size := bb_size
   io.resp.time := bb_time
-  io.resp.done := !cont && bb_size >= sigBBSize.U
+  io.resp.cont := cont
+  io.resp.emit := !cont && bb_size >= sigBBSize.U
   io.resp.seen := cont && !grow
 
 }
@@ -989,6 +991,13 @@ class EntanglingIPrefetcherPrefetchResp(implicit p: Parameters) extends CoreBund
   val index = UInt(idxBits.W)
 }
 
+/** [[EntanglingIPrefetcherPerfResp]] defines performance monitoring outputs.
+  */
+class EntanglingIPrefetcherPerfResp(implicit p: Parameters) extends CoreBundle with HasEntanglingIPrefetcherParameters {
+  val new_basic_block = Bool()
+  val emit_basic_block = Bool()
+}
+
 /** [[EntanglingIPrefetcher]] implements an entangling instruction prefetcher
   * 
   * The I$ sends addresses (physical and virtual) that are requested by the frontend to the prefetcher.
@@ -1003,6 +1012,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
     val fetch_req = Flipped(Valid(new EntanglingIPrefetcherFetchReq))
     val miss_req = Flipped(Valid(new EntanglingIPrefetcherMissReq))
     val prefetch_resp = Decoupled(new EntanglingIPrefetcherPrefetchResp)
+    val perf_resp = Output(new EntanglingIPrefetcherPerfResp)
   })
 
 
@@ -1036,7 +1046,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   entangling_table.io.prefetch_req.bits.baddr := fetch_baddr
 
   /* Link up the new BB IO */
-  entangling_table.io.update_req.valid := bb_counter.io.resp.done
+  entangling_table.io.update_req.valid := bb_counter.io.resp.emit
   entangling_table.io.update_req.bits.head := bb_counter.io.resp.head
   entangling_table.io.update_req.bits.pidx := bb_counter.io.resp.pidx
   entangling_table.io.update_req.bits.size := bb_counter.io.resp.size
@@ -1049,7 +1059,7 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
     val history_buffer = Module(new HistoryBuffer)
 
     /* Link up the insertion IO */
-    history_buffer.io.insert_req.valid := bb_counter.io.resp.done
+    history_buffer.io.insert_req.valid := bb_counter.io.resp.emit
     history_buffer.io.insert_req.bits.head := bb_counter.io.resp.head
     history_buffer.io.insert_req.bits.time := bb_counter.io.resp.time
 
@@ -1081,6 +1091,12 @@ class EntanglingIPrefetcher(implicit p: Parameters) extends CoreModule with HasE
   prefetch_queue.io.req.valid := entangling_table.io.prefetch_resp.valid
   prefetch_queue.io.req.bits := entangling_table.io.prefetch_resp.bits
   io.prefetch_resp <> prefetch_queue.io.resp
+
+
+
+  /* Performance monitoring */
+  io.perf_resp.new_basic_block := !bb_counter.io.resp.cont
+  io.perf_resp.emit_basic_block := bb_counter.io.resp.emit
 
 }
 
@@ -1214,9 +1230,9 @@ class BBCounterTest(
       val j = i-1.U
       assert(bb_counter.io.resp === out_rom(j), 
         s"[BBCounterTest $id] i=%d expected {%x, %d, %d, [%d]} after request {%x, %d, [%d]}, but got {%x, %d, %d, [%d]} ",
-        i, out_rom(j).head, out_rom(j).time, out_rom(j).size, out_rom(j).done,
+        i, out_rom(j).head, out_rom(j).time, out_rom(j).size, out_rom(j).emit,
         in_bits_rom(j).baddr, in_bits_rom(j).time, in_valid_rom(j),
-        bb_counter.io.resp.head, bb_counter.io.resp.time, bb_counter.io.resp.size, bb_counter.io.resp.done,
+        bb_counter.io.resp.head, bb_counter.io.resp.time, bb_counter.io.resp.size, bb_counter.io.resp.emit,
       )
     }
 

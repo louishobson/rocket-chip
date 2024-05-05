@@ -188,11 +188,14 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
       ("Demand refill", () => io.imem.icachePerf.get.demand_refill),
       ("Prefetch refill", () => io.imem.icachePerf.get.prefetch_refill),
       ("Prefetch consumed", () => io.imem.icachePerf.get.prefetch_consumed),
+      ("Late prefetch suggestion", () => io.imem.icachePerf.get.late_prefetch_suggestion),
       ("Late prefetch", () => io.imem.icachePerf.get.late_prefetch),
       ("Early prefetch", () => io.imem.icachePerf.get.early_prefetch),
       ("No prefetch", () => io.imem.icachePerf.get.no_prefetch),
       ("Erroneous prefetch", () => io.imem.icachePerf.get.erroneous_prefetch),
       ("Demand miss cycles", () => io.imem.icachePerf.get.demand_miss_cycles),
+      ("New basic block", () => io.imem.icachePerf.get.new_basic_block),
+      ("Emit basic block", () => io.imem.icachePerf.get.emit_basic_block),
     ))))
   )
 
