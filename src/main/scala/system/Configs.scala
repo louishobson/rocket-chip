@@ -29,7 +29,7 @@ class EntanglingIPrefetcherBaseConfig(
   nWays: Int = 4
 ) extends Config(
   new WithL1ICacheProfiling ++ 
-  new WithNPerfCounters(16) ++
+  new WithNPerfCounters(20) ++
   
   new WithoutTLMonitors ++
     

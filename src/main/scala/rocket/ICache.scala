@@ -401,7 +401,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     * Since a miss will trigger burst.
     * miss under miss won't trigger another burst.5
     */
-  val s2_request_refill = s2_miss && RegNext(s1_can_request_refill)
+  val s2_request_refill = s2_miss && RegNext(s1_can_request_refill) && !(ongoing_demand_miss && demand_miss_paddr === s2_paddr)
   val refill_paddr = mshr.io.resp.bits.paddr // RegEnable(io.s1_paddr, s1_valid && s1_can_request_refill)
   val refill_tag = refill_paddr >> pgUntagBits
   val refill_idx = mshr.io.resp.bits.index
