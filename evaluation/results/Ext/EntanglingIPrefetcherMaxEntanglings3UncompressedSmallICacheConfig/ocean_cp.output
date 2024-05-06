@@ -19,7 +19,7 @@ Early prefetch: 1421
 No prefetch: 74727
 Erroneous prefetch: 44203
 Demand miss cycles: 3289433
-Branch midpredict: 156681
+Branch mispredict: 156681
 
                        PROCESS STATISTICS
                   Total          Multigrid         Multigrid

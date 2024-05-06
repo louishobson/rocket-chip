@@ -33,7 +33,7 @@ Early prefetch: 310
 No prefetch: 207442
 Erroneous prefetch: 6
 Demand miss cycles: 6716491
-Branch midpredict: 448801
+Branch mispredict: 448801
 TIMING STATISTICS MEASURED BY MAIN PROCESS:
 	Overall start time	            10877357
 	Overall end time	            84430291

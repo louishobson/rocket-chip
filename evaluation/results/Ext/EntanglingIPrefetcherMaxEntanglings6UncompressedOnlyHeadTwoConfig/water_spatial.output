@@ -50,7 +50,7 @@ Early prefetch: 350
 No prefetch: 52010
 Erroneous prefetch: 5181
 Demand miss cycles: 3058718
-Branch midpredict: 345486
+Branch mispredict: 345486
 COMPUTESTART (after initialization) = 13101102
 COMPUTEEND = 93431594
 COMPUTETIME (after initialization) = 80330492

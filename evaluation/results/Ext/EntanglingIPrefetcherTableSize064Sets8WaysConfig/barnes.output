@@ -18,7 +18,7 @@ Early prefetch: 48
 No prefetch: 25852
 Erroneous prefetch: 549
 Demand miss cycles: 2292192
-Branch midpredict: 601545
+Branch mispredict: 601545
 COMPUTEEND    =    124595816
 COMPUTETIME   =    116854999
 TRACKTIME     =     69631312
