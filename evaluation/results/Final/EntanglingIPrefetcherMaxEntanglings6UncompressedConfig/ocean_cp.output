@@ -6,3 +6,35 @@ Ocean simulation with W-cycle multigrid solver
     Time between relaxations (seconds) : 28800
     Error tolerance                    : 1e-06
 
+Cycles: 114721557
+Time: 1147221
+Instret: 25126982
+I$ response: 31676871
+I$ miss: 114124
+Demand refill: 106848
+Prefetch refill: 839940
+Prefetch consumed: 1627590
+Late prefetch suggestion: 13824
+Late prefetch: 16877
+Early prefetch: 318
+No prefetch: 75500
+Erroneous prefetch: 11339
+Demand miss cycles: 3484342
+Branch direction mispredict: 158656
+New basic block: 193345
+Emit basic block: 72471
+Branch target mispredict: 51467
+
+                       PROCESS STATISTICS
+                  Total          Multigrid         Multigrid
+ Proc             Time             Time            Fraction
+    0          69171816           21360106             0.309
+
+                       TIMING INFORMATION
+Start time                        :          3094101
+Initialization finish time        :         48642674
+Overall finish time               :        118468264
+Total time with initialization    :        115374163
+Total time without initialization :         69825590
+    (excludes first timestep)
+

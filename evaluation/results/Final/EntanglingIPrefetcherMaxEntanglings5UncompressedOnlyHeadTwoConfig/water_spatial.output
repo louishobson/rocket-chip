@@ -35,3 +35,32 @@ ZERO = 1.55319
 WCOS = 0.585882
 WSIN = 0.756950
 ***** NEW RUN STARTING FROM REGULAR LATTICE *****
+         3     2149.89083   2041.73060      1.68734     -1.23204 
+         4192.077     583613.46461         -5.37280
+Cycles: 87789695
+Time: 877894
+Instret: 29605797
+I$ response: 40223645
+I$ miss: 120804
+Demand refill: 98086
+Prefetch refill: 597172
+Prefetch consumed: 14815254
+Late prefetch suggestion: 24292
+Late prefetch: 42258
+Early prefetch: 540
+No prefetch: 49281
+Erroneous prefetch: 9299
+Demand miss cycles: 3217349
+Branch direction mispredict: 399892
+New basic block: 2013201
+Emit basic block: 794337
+Branch target mispredict: 69839
+COMPUTESTART (after initialization) = 12928980
+COMPUTEEND = 93536875
+COMPUTETIME (after initialization) = 80607895
+Measured Time (2nd timestep onward) = 47799684
+Intramolecular time only (2nd timestep onward) = 721194
+Intermolecular time only (2nd timestep onward) = 46426809
+Other time (2nd timestep onward) = 651681
+
+Exited Happily with XTT = 4192.08 (note: XTT value is garbage if NPRINT > NSTEP)

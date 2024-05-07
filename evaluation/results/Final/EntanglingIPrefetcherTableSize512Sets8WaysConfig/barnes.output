@@ -10,3 +10,28 @@ COMPUTESTART  =      7638075
 2
 3
 4
+Cycles: 117505597
+Time: 1175075
+Instret: 40885124
+I$ response: 72459958
+I$ miss: 86352
+Demand refill: 76533
+Prefetch refill: 270884
+Prefetch consumed: 14043515
+Late prefetch suggestion: 49890
+Late prefetch: 19085
+Early prefetch: 28
+No prefetch: 15516
+Erroneous prefetch: 655
+Demand miss cycles: 2256567
+Branch direction mispredict: 558117
+New basic block: 1500062
+Emit basic block: 792742
+Branch target mispredict: 65072
+COMPUTEEND    =    120914209
+COMPUTETIME   =    113276134
+TRACKTIME     =     67501568
+PARTITIONTIME =       341359	 0.01
+TREEBUILDTIME =      2557333	 0.04
+FORCECALCTIME =     64314069	 0.95
+RESTTIME      =       288807	 0.00
