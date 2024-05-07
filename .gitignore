@@ -25,4 +25,5 @@ evaluation/results/*
 !evaluation/results/Core/
 !evaluation/results/Core2/
 !evaluation/results/Ext/
+!evaluation/results/Final/
 evaluation/results/*/EntanglingIPrefetcherTestConfig/

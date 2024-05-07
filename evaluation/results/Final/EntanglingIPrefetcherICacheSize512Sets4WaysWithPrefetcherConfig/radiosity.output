@@ -1,0 +1,12 @@
+init_global
+init_patchlist
+init_elemlist
+init_interactionlist
+init_elemvertex
+init_edge
+init_stat_info
+init_sharedlock
+init_visibility_module
+radiosity
+process_tasks (model)
+process_tasks (ray)

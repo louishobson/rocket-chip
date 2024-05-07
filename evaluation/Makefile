@@ -64,7 +64,6 @@ CACHESIZE_CONFIGS := \
 
 MAX_ENTANGLINGS_CONFIGS := \
 	EntanglingIPrefetcherNoEntanglingConfig \
-	EntanglingIPrefetcherNoEntanglingSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings1UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings2UncompressedConfig \
 	EntanglingIPrefetcherMaxEntanglings3UncompressedConfig \
@@ -85,6 +84,7 @@ MAX_ENTANGLINGS_CONFIGS := \
 	EntanglingIPrefetcherMaxEntanglings6UncompressedOnlyHeadTwoConfig
 	
 MAX_ENTANGLINGS_SMALL_ICACHE_CONFIGS := \
+	EntanglingIPrefetcherNoEntanglingSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings1UncompressedSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings2UncompressedSmallICacheConfig \
 	EntanglingIPrefetcherMaxEntanglings3UncompressedSmallICacheConfig \
@@ -153,6 +153,7 @@ ALL_BUILD_TARGETS             = $(patsubst %,build.%,$(CONFIGS))
 TABLESIZE_BUILD_TARGETS       = $(patsubst %,build.%,$(TABLESIZE_CONFIGS))
 CACHESIZE_BUILD_TARGETS       = $(patsubst %,build.%,$(CACHESIZE_CONFIGS))
 MAX_ENTANGLINGS_BUILD_TARGETS = $(patsubst %,build.%,$(MAX_ENTANGLINGS_CONFIGS))
+MAX_ENTANGLINGS_SMALL_ICACHE_BUILD_TARGETS = $(patsubst %,build.%,$(MAX_ENTANGLINGS_SMALL_ICACHE_CONFIGS))
 
 RADIOSITY_RUN_TARGETS 	  = $(patsubst %,run-radiosity.%,$(CONFIGS))
 BARNES_RUN_TARGETS 		  = $(patsubst %,run-barnes.%,$(CONFIGS))
@@ -162,6 +163,7 @@ OCEAN_CP_RUN_TARGETS      = $(patsubst %,run-ocean-cp.%,$(CONFIGS))
 TABLESIZE_RUN_TARGETS       = $(patsubst %,run-radiosity.%,$(TABLESIZE_CONFIGS)) $(patsubst %,run-barnes.%,$(TABLESIZE_CONFIGS)) $(patsubst %,run-water-spatial.%,$(TABLESIZE_CONFIGS)) $(patsubst %,run-ocean-cp.%,$(TABLESIZE_CONFIGS))
 CACHESIZE_RUN_TARGETS       = $(patsubst %,run-radiosity.%,$(CACHESIZE_CONFIGS)) $(patsubst %,run-barnes.%,$(CACHESIZE_CONFIGS)) $(patsubst %,run-water-spatial.%,$(CACHESIZE_CONFIGS)) $(patsubst %,run-ocean-cp.%,$(CACHESIZE_CONFIGS))
 MAX_ENTANGLINGS_RUN_TARGETS = $(patsubst %,run-radiosity.%,$(MAX_ENTANGLINGS_CONFIGS)) $(patsubst %,run-barnes.%,$(MAX_ENTANGLINGS_CONFIGS)) $(patsubst %,run-water-spatial.%,$(MAX_ENTANGLINGS_CONFIGS)) $(patsubst %,run-ocean-cp.%,$(MAX_ENTANGLINGS_CONFIGS))
+MAX_ENTANGLINGS_SMALL_ICACHE_RUN_TARGETS = $(patsubst %,run-radiosity.%,$(MAX_ENTANGLINGS_SMALL_ICACHE_CONFIGS)) $(patsubst %,run-barnes.%,$(MAX_ENTANGLINGS_SMALL_ICACHE_CONFIGS)) $(patsubst %,run-water-spatial.%,$(MAX_ENTANGLINGS_SMALL_ICACHE_CONFIGS)) $(patsubst %,run-ocean-cp.%,$(MAX_ENTANGLINGS_SMALL_ICACHE_CONFIGS))
 
 ALL_RUN_TARGETS 		  = $(RADIOSITY_RUN_TARGETS) $(BARNES_RUN_TARGETS) $(WATER_SPATIAL_RUN_TARGETS) $(OCEAN_CP_RUN_TARGETS)
 
@@ -176,12 +178,12 @@ build-all::
 
 build-all-tablesize::
 	$(MAKE) $(TABLESIZE_BUILD_TARGETS)
-
 build-all-cachesize::
 	$(MAKE) $(CACHESIZE_BUILD_TARGETS)
-
 build-all-max-entanglings::
 	$(MAKE) $(MAX_ENTANGLINGS_BUILD_TARGETS)	
+build-all-max-entanglings-small-icache::
+	$(MAKE) $(MAX_ENTANGLINGS_SMALL_ICACHE_BUILD_TARGETS)	
 
 build.%::
 	if [ ! -f $(BASE_DIR)/out/emulator/$(PROJECT).TestHarness/$(PROJECT).$(BUILD_CONFIG)/verilator/elf.dest/emulator ]; \
@@ -198,6 +200,8 @@ run-all-cachesize::
 	$(MAKE) $(CACHESIZE_RUN_TARGETS)
 run-all-max-entanglings::
 	$(MAKE) $(MAX_ENTANGLINGS_RUN_TARGETS)
+run-all-max-entanglings-small-icache::
+	$(MAKE) $(MAX_ENTANGLINGS_SMALL_ICACHE_RUN_TARGETS)
 
 run-all.%::
 	$(MAKE) $(patsubst run-all.%,run-radiosity.%,$@) $(patsubst run-all.%,run-barnes.%,$@) $(patsubst run-all.%,run-water-spatial.%,$@) $(patsubst run-all.%,run-ocean-cp.%,$@)
