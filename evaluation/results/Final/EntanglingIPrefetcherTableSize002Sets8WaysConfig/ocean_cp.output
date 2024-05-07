@@ -24,3 +24,17 @@ Branch direction mispredict: 159907
 New basic block: 192802
 Emit basic block: 68231
 Branch target mispredict: 51653
+
+                       PROCESS STATISTICS
+                  Total          Multigrid         Multigrid
+ Proc             Time             Time            Fraction
+    0          68581909           21230909             0.310
+
+                       TIMING INFORMATION
+Start time                        :          3010504
+Initialization finish time        :         48075073
+Overall finish time               :        117271447
+Total time with initialization    :        114260943
+Total time without initialization :         69196374
+    (excludes first timestep)
+
