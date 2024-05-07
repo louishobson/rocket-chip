@@ -10,3 +10,41 @@ init_visibility_module
 radiosity
 process_tasks (model)
 process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (ray)
+process_tasks (avg)
+process_tasks (norm)
+Cycles: 78094166
+Time: 780956
+Instret: 34491068
+I$ response: 36638713
+I$ miss: 154923
+Demand refill: 145339
+Prefetch refill: 262173
+Prefetch consumed: 6827128
+Late prefetch suggestion: 39454
+Late prefetch: 20555
+Early prefetch: 932
+No prefetch: 93976
+Erroneous prefetch: 665
+Demand miss cycles: 4147472
+Branch direction mispredict: 385035
+New basic block: 1940056
+Emit basic block: 1048152
+Branch target mispredict: 165516
+TIMING STATISTICS MEASURED BY MAIN PROCESS:
+	Overall start time	            10685987
+	Overall end time	            81374250
+	Total time with initialization	            70688263
+	Total time without initialization	            70656651
+Rasiosity Statistics
+
+    Histogram of interactions/elem
+	 Interactions  Occurrence
+	 -------------------------------
